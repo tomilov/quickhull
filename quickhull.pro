@@ -22,7 +22,7 @@ CONFIG(debug, debug|release) {
 win32 {
     CONFIG += console thread
 
-    BOOST_INCLUDE="D:/libs/boost"
+    BOOST_INCLUDE="C:/libs/boost"
     INCLUDEPATH += $$BOOST_INCLUDE
     QMAKE_CXXFLAGS += -isystem $$BOOST_INCLUDE
     DEPENDPATH += $$BOOST_INCLUDE

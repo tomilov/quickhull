@@ -4,16 +4,13 @@
 
 int main()
 {
-    boost::numeric::ublas::matrix< double > m_(3, 3);
-    m_(0, 0) = 1;
-    m_(0, 1) = 2;
-    m_(0, 2) = 3;
-    m_(1, 0) = 4;
-    m_(1, 1) = 5;
-    m_(1, 2) = 6;
-    m_(2, 0) = 7;
-    m_(2, 1) = 8;
-    m_(2, 2) = 0;
-    std::cout << determinant(m_) << std::endl;
+    using H = convex_hull< double >;
+    using point = typename H::point_type;
+    using points = typename H::points_type;
+    H convex_hull_;
+    points points_{{0.0, 2.0},
+                   {0.0, -1.0}};
+    point point_{-10.0, 2.0};
+    std::cout << convex_hull_.signed_distance_to_hyperplane(points_, point_) << std::endl;
     return EXIT_SUCCESS;
 }
