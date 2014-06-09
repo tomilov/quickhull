@@ -7,6 +7,7 @@
 #include <valarray>
 #include <deque>
 #include <set>
+#include <map>
 #include <list>
 #include <iterator>
 #include <algorithm>
@@ -53,7 +54,7 @@ struct convex_hull
 
     template< typename ForwardIterator >
     convex_hull(ForwardIterator _first, ForwardIterator _last)
-        : dimension_(*_first.size())
+        : dimension_(_first->size())
         , points_(_first, _last)
     { ; }
 
@@ -81,7 +82,7 @@ struct convex_hull
         return {};
     }
 
-//private :
+    //private :
 
     size_type dimension_;
     points_type points_;
@@ -94,14 +95,24 @@ struct convex_hull
 
     };
 
+    struct facet;
+
+    using facets_type = std::map< size_type, facet >;
+    size_type facet_id_ = 0;
+
+    using facet_set_type = std::set< size_type >;
+
     struct facet // (d - 1)-dimensional faces
     {
 
         points_type vertices_;
-        std::deque< std::reference_wrapper< facet const > > neighboring_facets_;
-        hyperplane hyperplane_; // hyperplane equation
+        boolean_type top_orientation_;
+        facet_set_type neighboring_facets_;
+        point_list outside_set_; // if not empty, then first point is furthest from this facet
 
     };
+
+    facets_type facets_;
 
     struct ridge // The (d - 2)-dimensional faces
     {
@@ -122,10 +133,24 @@ struct convex_hull
         return (_hyperplane.unit_normal_ * (_point - _hyperplane.offset_)).sum();
     }
 
+    template< typename vertices > // vertices is point_list or points_type
     G
-    orientation(point_list const & _vertices, point_type const & _point) const
+    orientation(vertices const & _vertices, point_type const & _point) const
     {
-        size_type const size_ = _vertices.size(); // dimension of the subspace of interest
+        /*
+            $\displaystyle
+            \Delta_{H}(x)=
+            \left\vert
+            \begin{array}{ccccc}
+             p_{1,1} & p_{1,2} & \cdots & p_{1,n} & 1 \\
+             p_{2,1} & p_{2,2} & \cdots & p_{2,n} & 1 \\
+             \vdots & \vdots & \vdots & \vdots & \vdots \\
+             p_{n,1} & p_{n,2} & \cdots & p_{n,n} & 1 \\
+             x_{1} & x_{2} & \cdots & x_{n} & 1
+            \end{array}
+            \right\vert$
+         */
+        size_type const size_ = _vertices.size(); // dimensionality of the subspace of interest
         assert(!(_point.size() < size_));
         boost::numeric::ublas::matrix< G > m_(size_ + 1, size_ + 1);
         auto v_ = _vertices.cbegin();
@@ -144,47 +169,184 @@ struct convex_hull
         }
         m_(size_, size_) = G(1.0L);
         return determinant(std::move(m_));
+        // if orientation is less than (dimension_-th-root of epsilon), then we have a coplanar set of points
     }
 
     struct bad_geometry
+            : std::exception
     {
+
+        ~bad_geometry() noexcept = default;
+
+        bad_geometry() = default;
+
+        bad_geometry(const char * const _what)
+            : what_(_what)
+        { ; }
+
+        virtual
+        const char *
+        what() const noexcept
+        {
+            return what_;
+        }
+
+    private :
+
+        const char * const what_ = "bad_get: failed value get using get()";
 
     };
 
-    size_type
-    random(size_type const) const
+    G
+    abs(G const & _x) const
     {
-        return 0;
+        return (_x < G(0.0L)) ? -_x : +_x;
     }
 
-    void
-    steal_farthest(point_list & _from, point_list & _to) const
+    G
+    abs(G && _x) const
+    {
+        return (_x < G(0.0L)) ? -std::move(_x) : std::move(_x);
+    }
+
+    boolean_type
+    steal_furthest(point_list & _from, point_list & _to) const // move from from_ to to_ furthest (in sense of _to.size()-dimensional subspace distance) point
     {
         auto it = _from.begin();
         auto const end = _from.end();
         G orientation_ = orientation(_to, *it);
-        auto farthest = it;
+        auto furthest = it;
         while (++it != end) {
-            if (orientation_ < orientation(_to, *it)) {
-                farthest = it;
+            G const o_ = abs(orientation(_to, *it));
+            if (orientation_ < o_) {
+                orientation_ = o_;
+                furthest = it;
             }
         }
-        _to.splice(_to.end(), _from, farthest);
+        _to.splice(_to.end(), _from, furthest);
         return (orientation_ != G(0.0L));
     }
 
-    point_list
-    create_simplex() const
+    points_type
+    hole_set(point_list const & _vertices, size_type const _nth) const
+    {
+        assert(_vertices.size() == dimension_ + 1);
+        points_type hole_set_;
+        auto vertex_ = _vertices.cbegin();
+        for (size_type i = 0; i <= dimension_; ++i) {
+            if (i != _nth) {
+                hole_set_.emplace_back(*vertex_);
+            }
+            ++vertex_;
+        }
+        return hole_set_;
+    }
+
+    void
+    create_simplex()
     {
         assert(dimension_ < points_.size());
-        point_list points_list_(points_.cbegin() + 1, points_.cend());
-        point_list simplex_{points_.front()};
-        for (size_type i = 0; i < dimension_; ++i) {
-            if (!steal_farthest(points_list_, simplex_)) {
-                throw bad_geometry(); // linear dependent points
+        point_list vertices_{points_.front()}; // not the optimal choise, but would then be rejudged
+        point_list source_points_(std::next(points_.cbegin()), points_.cend());
+        {
+            for (size_type i = 0; i < dimension_; ++i) {
+                if (!steal_furthest(source_points_, vertices_)) {
+                    throw bad_geometry("can't select a (dim + 1) set of noncoplanar points");
+                }
+            }
+            for (size_type i = 0; i <= dimension_; ++i) { // rejudge feasibility of all the points again
+                source_points_.splice(source_points_.end(), vertices_, vertices_.begin());
+                if (!steal_furthest(source_points_, vertices_)) {
+                    throw bad_geometry("can't select a (dim + 1) set of noncoplanar points");
+                }
             }
         }
-        return simplex_;
+        point_type inner_point_;
+        {
+            auto it = vertices_.cbegin();
+            inner_point_ = *it;
+            auto const end = vertices_.cend();
+            while (++it != end) {
+                inner_point_ += *it;
+            }
+            inner_point_ /= G(1 + dimension_);
+        }
+        // facets_
+        {
+            points_type first_vertices_ = hole_set(vertices_, 0);
+            boolean_type top_orientation_ = (orientation(first_vertices_, inner_point_) < G(0.0L));
+            facets_.emplace_hint(facets_.end(), facet_id_++, facet{std::move(first_vertices_), top_orientation_});
+            for (size_type i = 1; i <= dimension_; ++i) {
+                top_orientation_ = !top_orientation_;
+                auto const position = facets_.emplace_hint(facets_.end(), facet_id_++, facet{hole_set(vertices_, i), top_orientation_});
+                assert(top_orientation_ == (orientation(position->second.vertices_, inner_point_) < G(0.0L)));
+            }
+        }
+        {
+            auto const beg = facets_.begin();
+            auto const end = facets_.end();
+            for (auto i = beg; i != end; ++i) {
+                facet_set_type & neighboring_facets_ = i->second.neighboring_facets_;
+                for (auto j = beg; j != end; ++j) {
+                    if (j != i) {
+                        neighboring_facets_.emplace_hint(neighboring_facets_.end(), j->first);
+                    }
+                }
+            }
+            // set hyperplane equation for each facet here (does we need in?)
+            for (auto & facet_ : facets_) {
+                auto it = source_points_.begin();
+                auto const end = source_points_.end();
+                point_list & outside_set_ = facet_.second.outside_set_;
+                auto const oend = outside_set_.end(); // remains valid for std::list
+                G orientation_(0.0L);
+                while (it != end) {
+                    auto const next = std::next(it);
+                    G const o_ = orientation(facet_.second.vertices_, *it);
+                    if (G(0.0L) < o_) {
+                        if (outside_set_.empty() || (orientation_ < o_)) {
+                            orientation_ = o_;
+                            outside_set_.splice(outside_set_.begin(), source_points_, it);
+                        } else {
+                            outside_set_.splice(oend, source_points_, it);
+                        }
+                    }
+                    it = next;
+                }
+                if (source_points_.empty()) {
+                    break;
+                }
+            }
+        }
+        for (;;) {
+            auto current = facets_.begin();
+            auto const end = facets_.end();
+            while (current != end) {
+                if (!current->second.outside_set_.empty()) {
+                    facet const & facet_ = current->second;
+                    point_list const & outside_set_ = facet_.outside_set_;
+                    if (!outside_set_.empty()) {
+                        point_type const & furthest_point_ = outside_set_.front();
+                        facet_set_type visible_facets_{current->first};
+                        facet_set_type neighboring_facets_ = facet_.neighboring_facets_;
+                        while (!neighboring_facets_.empty()) {
+                            auto const first = neighboring_facets_.begin();
+                            size_type const f_ = *first;
+                            auto const candidate = facets_.find(f_);
+                            assert(candidate != facets_.end());
+                            facet const & candidate_facet_ = candidate->second;
+                            if (G(0.0L) < orientation(candidate_facet_.vertices_, furthest_point_)) { // if point is above the neighbor, then add they to visible set
+                                visible_facets_.insert(f_);
+                                neighboring_facets_.insert(candidate_facet_.neighboring_facets_.cbegin(),
+                                                           candidate_facet_.neighboring_facets_.cend());
+                            }
+                            neighboring_facets_.erase(first);
+                        }
+                    }
+                }
+            }
+            // ?
+        }
     }
 
 };
