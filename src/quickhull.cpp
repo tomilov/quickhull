@@ -14,7 +14,7 @@ int main()
     using point = typename H::point_type;
 
     std::ifstream ifs_;
-    ifs_.open("../10.txt");
+    ifs_.open("points.txt"); // rbox n D3 100 > points.txt
     if (ifs_.is_open()) {
         std::string line_;
         if (!std::getline(ifs_, line_)) {

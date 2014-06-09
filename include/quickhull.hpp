@@ -105,8 +105,10 @@ struct convex_hull
     struct facet // (d - 1)-dimensional faces
     {
 
+        facet() = default;
+
         points_type vertices_;
-        boolean_type top_orientation_;
+        boolean_type upward_;
         facet_set_type neighboring_facets_;
         point_list outside_set_; // if not empty, then first point is furthest from this facet
 
@@ -209,7 +211,7 @@ struct convex_hull
         return (_x < G(0.0L)) ? -std::move(_x) : std::move(_x);
     }
 
-    boolean_type
+    G
     steal_furthest(point_list & _from, point_list & _to) const // move from from_ to to_ furthest (in sense of _to.size()-dimensional subspace distance) point
     {
         auto it = _from.begin();
@@ -217,14 +219,14 @@ struct convex_hull
         G orientation_ = orientation(_to, *it);
         auto furthest = it;
         while (++it != end) {
-            G const o_ = abs(orientation(_to, *it));
-            if (orientation_ < o_) {
+            G const o_ = orientation(_to, *it);
+            if (abs(orientation_) < abs(o_)) {
                 orientation_ = o_;
                 furthest = it;
             }
         }
         _to.splice(_to.end(), _from, furthest);
-        return (orientation_ != G(0.0L));
+        return orientation_;
     }
 
     points_type
@@ -250,38 +252,48 @@ struct convex_hull
         point_list source_points_(std::next(points_.cbegin()), points_.cend());
         {
             for (size_type i = 0; i < dimension_; ++i) {
-                if (!steal_furthest(source_points_, vertices_)) {
+                G const orientation_ = steal_furthest(source_points_, vertices_);
+                if (!(G(0.0L) < abs(orientation_))) {
                     throw bad_geometry("can't select a (dim + 1) set of noncoplanar points");
                 }
             }
-            for (size_type i = 0; i <= dimension_; ++i) { // rejudge feasibility of all the points again
+            for (size_type i = 0; i < dimension_; ++i) { // rejudge feasibility of all the points again
                 source_points_.splice(source_points_.end(), vertices_, vertices_.begin());
-                if (!steal_furthest(source_points_, vertices_)) {
+                G const orientation_ = steal_furthest(source_points_, vertices_);
+                if (!(G(0.0L) < abs(orientation_))) {
                     throw bad_geometry("can't select a (dim + 1) set of noncoplanar points");
                 }
             }
-        }
-        point_type inner_point_;
-        {
-            auto it = vertices_.cbegin();
-            inner_point_ = *it;
-            auto const end = vertices_.cend();
-            while (++it != end) {
-                inner_point_ += *it;
+            { // last
+                source_points_.splice(source_points_.end(), vertices_, vertices_.begin());
+                points_type first_vertices_(vertices_.cbegin(), vertices_.cend());
+                G const o_ = steal_furthest(source_points_, vertices_);
+                if (!(G(0.0L) < abs(o_))) {
+                    throw bad_geometry("can't select a (dim + 1) set of noncoplanar points");
+                }
+#ifndef NDEBUG
+                point_type inner_point_;
+                {
+                    auto it = vertices_.cbegin();
+                    inner_point_ = *it;
+                    auto const end = vertices_.cend();
+                    while (++it != end) {
+                        inner_point_ += *it;
+                    }
+                    inner_point_ /= G(1 + dimension_);
+                }
+#endif
+                vertices_.splice(vertices_.begin(), vertices_, std::prev(vertices_.end()));
+                boolean_type upward_ = (G(0.0L) < o_);
+                facets_.emplace_hint(facets_.end(), 0, facet{std::move(first_vertices_), upward_});
+                for (size_type i = 1; i <= dimension_; ++i) {
+                    upward_ = !upward_;
+                    facets_.emplace_hint(facets_.end(), i, facet{hole_set(vertices_, i), upward_});
+                    assert(upward_ == (G(0.0L) < orientation(std::prev(facets_.end())->second.vertices_, inner_point_)));
+                }
             }
-            inner_point_ /= G(1 + dimension_);
         }
-        // facets_
-        {
-            points_type first_vertices_ = hole_set(vertices_, 0);
-            boolean_type top_orientation_ = (orientation(first_vertices_, inner_point_) < G(0.0L));
-            facets_.emplace_hint(facets_.end(), facet_id_++, facet{std::move(first_vertices_), top_orientation_});
-            for (size_type i = 1; i <= dimension_; ++i) {
-                top_orientation_ = !top_orientation_;
-                auto const position = facets_.emplace_hint(facets_.end(), facet_id_++, facet{hole_set(vertices_, i), top_orientation_});
-                assert(top_orientation_ == (orientation(position->second.vertices_, inner_point_) < G(0.0L)));
-            }
-        }
+#if 0
         {
             auto const beg = facets_.begin();
             auto const end = facets_.end();
@@ -347,6 +359,7 @@ struct convex_hull
             }
             // ?
         }
+#endif
     }
 
 };

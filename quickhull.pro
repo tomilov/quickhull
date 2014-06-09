@@ -13,20 +13,15 @@ INCLUDEPATH += "include/"
 DEPENDPATH += "include/"
 LIBS += -L"lib/"
 CONFIG(release, debug|release) {
-    #LIBS += -linsituc
 }
 CONFIG(debug, debug|release) {
-    #LIBS += -linsitucd
 }
+
+QMAKE_CXXFLAGS_DEBUG += -fno-default-inline -fno-inline
+QMAKE_LFLAGS_DEBUG   += -fno-default-inline -fno-inline
 
 win32 {
     CONFIG += console thread
-
-    BOOST_INCLUDE="D:/libs/boost"
-    INCLUDEPATH += $$BOOST_INCLUDE
-    QMAKE_CXXFLAGS += -isystem $$BOOST_INCLUDE
-    DEPENDPATH += $$BOOST_INCLUDE
-    #QMAKE_INCDIR_QT =
 }
 
 SOURCES += "src/quickhull.cpp"
