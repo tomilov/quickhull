@@ -81,7 +81,9 @@ struct convex_hull
     convex_hull(ForwardIterator _first, ForwardIterator _last)
         : dimension_(_first->size())
         , points_(_first, _last)
-    { ; }
+    {
+        assert(0 < dimension_);
+    }
 
     void
     append(point_type const & _point)
@@ -123,17 +125,42 @@ struct convex_hull
     struct facet;
 
     using facets_type = std::map< size_type, facet >;
-    size_type facet_id_ = 0;
+    using facet_iterator = typename facets_type::iterator;
 
     using facet_set_type = std::set< size_type >;
 
     struct facet // (d - 1)-dimensional faces
     {
 
-        facet() = default;
+        template< typename ForwardIterator >
+        facet(ForwardIterator first, ForwardIterator last,
+              boolean_type const _outward)
+            : vertices_(first, last)
+            , outward_(_outward)
+        { ; }
+
+        boolean_type
+        further(G const & _nearer, G const & _further) const
+        {
+            if (outward_) {
+                return (_nearer < _further);
+            } else {
+                return (_further < _nearer);
+            }
+        }
+
+        boolean_type
+        above(G const & _volume) const
+        {
+            if (outward_) {
+                return (G(0.0L) < _volume);
+            } else {
+                return (_volume < -G(0.0L));
+            }
+        }
 
         points_type vertices_;
-        boolean_type upward_;
+        boolean_type outward_;
         facet_set_type neighboring_facets_;
         point_list outside_set_; // if not empty, then first point is best for this facet
 
@@ -212,6 +239,9 @@ struct convex_hull
                 best = it;
             }
         }
+        if (!(G(0.0L) < abs(volume_))) {
+            throw bad_geometry("can't find linearly independent point");
+        }
         _to.splice(_to.end(), _from, best);
         return volume_;
     }
@@ -231,49 +261,91 @@ struct convex_hull
         return pricked_set_;
     }
 
-    void
+    G
+    partition(facet & _facet)
+    {
+        auto it = points_.begin();
+        auto const end = points_.end();
+        point_list & outside_set_ = _facet.outside_set_;
+        auto const oend = outside_set_.end(); // remains valid for std::list
+        G volume_(0.0L);
+        while (it != end) {
+            auto const next = std::next(it);
+            G const v_ = volume(_facet.vertices_, *it);
+            if (_facet.above(v_)) {
+                if (outside_set_.empty() || _facet.further(volume_, v_)) {
+                    volume_ = v_;
+                    outside_set_.splice(outside_set_.begin(), points_, it);
+                } else {
+                    outside_set_.splice(oend, points_, it);
+                }
+            }
+            it = next;
+        }
+        return volume_;
+    }
+
+    template< typename ForwardIterator >
+    facet
+    make_facet(ForwardIterator beg, ForwardIterator mid, ForwardIterator end,
+               boolean_type const _outward)
+    {
+        facet facet_(beg, std::prev(mid), _outward);
+        points_type & vertices_ = facet_.vertices_;
+        vertices_.insert(vertices_.end(), mid, end);
+        return facet_;
+    }
+
+    facet_iterator
     create_simplex()
     {
         assert(dimension_ < points_.size());
-        point_list vertices_; // not the optimal choise, but would then be rejudged
+        point_list vertices_;
         vertices_.splice(vertices_.end(), points_, points_.begin());
-        {
-            for (size_type i = 0; i < dimension_; ++i) {
-                G const volume_ = steal_best(points_, vertices_);
-                if (!(G(0.0L) < abs(volume_))) {
-                    throw bad_geometry("can't select a (dim + 1) set of noncoplanar points");
-                }
-            }
-            { // last
-                points_.splice(points_.end(), vertices_, vertices_.begin());
-                points_type first_vertices_(vertices_.cbegin(), vertices_.cend());
-                G const volume_ = steal_best(points_, vertices_);
-                if (!(G(0.0L) < abs(volume_))) {
-                    throw bad_geometry("can't select a (dim + 1) set of noncoplanar points");
-                }
-#ifndef NDEBUG
-                point_type inner_point_;
-                {
-                    auto it = vertices_.cbegin();
-                    inner_point_ = *it;
-                    auto const end = vertices_.cend();
-                    while (++it != end) {
-                        inner_point_ += *it;
-                    }
-                    inner_point_ /= G(1 + dimension_);
-                }
-#endif
-                vertices_.splice(vertices_.begin(), vertices_, std::prev(vertices_.end())); // for the purpose of outer direction to be known
-                boolean_type upward_ = (G(0.0L) < volume_);
-                facets_.emplace_hint(facets_.end(), 0, facet{std::move(first_vertices_), upward_});
-                for (size_type i = 1; i <= dimension_; ++i) {
-                    upward_ = !upward_;
-                    facets_.emplace_hint(facets_.end(), i, facet{pricked_set(vertices_, i), upward_});
-                    assert(upward_ == (G(0.0L) < volume(std::prev(facets_.end())->second.vertices_, inner_point_)));
-                }
-            }
+        for (size_type i = 0; i < dimension_; ++i) {
+            steal_best(points_, vertices_);
         }
-        return;
+        // (N + 1) vertices defines a simplex
+        points_.splice(points_.end(), vertices_, vertices_.begin());
+        // N vertices defines a facet
+        boolean_type outward_ = !(G(0.0L) < steal_best(points_, vertices_)); // top oriented?
+        auto const vbeg = vertices_.cbegin();
+        auto const vend = vertices_.cend();
+#ifndef NDEBUG
+        point_type inner_point_;
+        {
+            auto it = vbeg;
+            inner_point_ = *it;
+            while (++it != vend) {
+                inner_point_ += *it;
+            }
+            inner_point_ /= G(1 + dimension_);
+        }
+#endif
+        auto const fend = facets_.end();
+        auto furthest = fend;
+        G volume_(0.0L);
+        for (auto exclusive = vend; exclusive != vbeg; --exclusive) {
+            auto const f = facets_.emplace_hint(fend, facets_.size(), make_facet(vbeg, exclusive, vend, outward_));
+            facet & facet_ = f->second;
+            G const v_ = abs(partition(facet_));
+            if (volume_ < v_) {
+                volume_ = v_;
+                furthest = f;
+            }
+            assert(outward_ == !(G(0.0L) < volume(facet_.vertices_, inner_point_)));
+            outward_ = !outward_;
+        }
+        points_.clear(); // all the known interior points removing
+        if (furthest == fend) {
+            std::cout << "convex hull" << std::endl; // rbox D3 5 n t5 > points.txt
+        }
+        return furthest;
+    }
+
+    void
+    create_convex_hull()
+    {
         /*{
             auto const beg = facets_.begin();
             auto const end = facets_.end();
@@ -285,31 +357,6 @@ struct convex_hull
                     }
                 }
             }
-            // set hyperplane equation for each facet here (does we need in?)
-            for (auto & facet_ : facets_) {
-                auto it = points_.begin();
-                auto const end = points_.end();
-                point_list & outside_set_ = facet_.second.outside_set_;
-                auto const oend = outside_set_.end(); // remains valid for std::list
-                G volume_(0.0L);
-                while (it != end) {
-                    auto const next = std::next(it);
-                    G const v_ = volume(facet_.second.vertices_, *it);
-                    if (G(0.0L) < v_) {
-                        if (outside_set_.empty() || (volume_ < v_)) {
-                            volume_ = v_;
-                            outside_set_.splice(outside_set_.begin(), points_, it);
-                        } else {
-                            outside_set_.splice(oend, points_, it);
-                        }
-                    }
-                    it = next;
-                }
-                if (points_.empty()) {
-                    break;
-                }
-            }
-            points_.clear(); // all this points is defenitely inner
         }
         auto const end = facets_.end();
         while (!facets_.empty()) {
