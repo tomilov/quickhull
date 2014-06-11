@@ -79,17 +79,17 @@ int main()
     }
     ofs_ << 'e' << std::endl;
     H convex_hull_(points_.cbegin(), points_.cend());
-    convex_hull_.create_simplex();
+    convex_hull_.create_convex_hull();
     for (auto const & facet_ : convex_hull_.facets_) {
         auto const & vertices_ = facet_.second.vertices_;
-        for (point_type const & point_ : vertices_) {
-            for (G const & coordinate_ : point_) {
+        for (size_type const vertex_ : vertices_) {
+            for (G const & coordinate_ : points_.at(vertex_)) {
                 ofs_ << coordinate_ << ' ';
             }
             ofs_ << std::endl;
         }
-        point_type const & first_point_ = vertices_.front();
-        for (G const & coordinate_ : first_point_) {
+        point_type const & first_vertex_ = points_.at(vertices_.front());
+        for (G const & coordinate_ : first_vertex_) {
             ofs_ << coordinate_ << ' ';
         }
         ofs_ << std::endl << std::endl;
