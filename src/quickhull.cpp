@@ -14,6 +14,7 @@ int main()
     using G = double;
     using point_type = std::valarray< G >;
     using H = convex_hull< point_type >;
+    using size_type = std::size_t;
 
     std::ifstream ifs_;
     ifs_.open("points.txt"); // rbox n D3 s 100 > points.txt

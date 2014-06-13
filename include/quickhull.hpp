@@ -48,13 +48,11 @@ private :
 
 };
 
-using boolean_type = bool;
-using size_type = std::size_t;
-
 template< typename F >
 F
 determinant(boost::numeric::ublas::matrix< F > _m)
 {
+    using size_type = typename boost::numeric::ublas::matrix< F >::size_type;
     size_type const size_ = _m.size1();
     assert(_m.size2() == size_);
     boost::numeric::ublas::permutation_matrix< size_type > pm_(size_);
@@ -77,7 +75,8 @@ template< typename point_type >
 struct convex_hull
 {
 
-    using self = convex_hull< point_type >;
+    using size_type = std::size_t;
+
     using G = typename point_type::value_type;
     using point_refs_type = std::deque< std::reference_wrapper< point_type const > >;
     using point_list = std::list< size_type >;
@@ -110,7 +109,7 @@ struct convex_hull
 
         template< typename ForwardIterator >
         facet(ForwardIterator first, ForwardIterator mid, ForwardIterator last,
-              boolean_type const _outward)
+              bool const _outward)
             : vertices_(first, std::prev(mid))
             , points_(vertices_.cbegin(), vertices_.cend())
             , outward_(_outward)
@@ -121,7 +120,7 @@ struct convex_hull
         }
 
         facet(points_type && _vertices,
-              boolean_type const _outward,
+              bool const _outward,
               size_type const _neighbour)
             : vertices_(std::move(_vertices))
             , points_(vertices_.cbegin(), vertices_.cend())
@@ -133,11 +132,11 @@ struct convex_hull
 
         points_type vertices_; // oriented
         points_type points_;   // non-oriented
-        boolean_type outward_;
+        bool outward_;
         facet_set neighbours_;
         points_type outside_set_; // if not empty, then first point is furthest for this facet
 
-        boolean_type
+        bool
         further(G const & _nearer, G const & _further) const
         {
             if (outward_) {
@@ -154,7 +153,7 @@ struct convex_hull
 
     facets_map facets_;
 
-    boolean_type
+    bool
     below(facet const & _facet, G const & _orientation) const
     {
         if (_facet.outward_) {
@@ -289,6 +288,61 @@ struct convex_hull
         return abs(orientation_);
     }
 
+    void
+    create_simplex()
+    {
+        {
+            size_type const size_ = points_.size();
+            assert(dimension_ < size_);
+            for (size_type i = 0; i < size_; ++i) {
+                internal_set_.push_back(i);
+            }
+        }
+        point_list vertices_;
+        vertices_.splice(vertices_.end(), internal_set_, internal_set_.begin());
+        for (size_type i = 0; i < dimension_; ++i) {
+            steal_best(internal_set_, vertices_);
+        }
+        assert(vertices_.size() == 1 + dimension_); // (N + 1) vertices defining a simplex
+        internal_set_.splice(internal_set_.end(), vertices_, vertices_.begin());
+        assert(vertices_.size() == dimension_); // N vertices defining a facet
+        bool outward_ = !(G(0.0L) < steal_best(internal_set_, vertices_)); // is top oriented?
+        auto const vbeg = vertices_.cbegin();
+        auto const vend = vertices_.cend();
+#ifndef NDEBUG
+        point_type inner_point_ = points_.at(*vbeg);
+        {
+            auto it = vbeg;
+            while (++it != vend) {
+                inner_point_ += points_.at(*it);
+            }
+            inner_point_ /= G(1 + dimension_);
+        }
+#endif
+        auto const fend = facets_.end();
+        for (auto exclusive = vend; exclusive != vbeg; --exclusive) {
+            size_type const n = facets_.size();
+            auto const f = facets_.emplace_hint(fend, n, facet(vbeg, exclusive, vend, outward_));
+            facet & facet_ = f->second;
+            rank(partition(facet_, internal_set_), n);
+            assert(outward_ == !(G(0.0L) < orientation(facet_.vertices_, inner_point_)));
+            outward_ = !outward_;
+        }
+        assert(dimension_ + 1 == facets_.size()); // simplex
+        {
+            auto const fbeg = facets_.begin();
+            for (auto i = fbeg; i != fend; ++i) {
+                facet_set & neighbours_ = i->second.neighbours_;
+                for (auto j = fbeg; j != fend; ++j) {
+                    if (j != i) {
+                        neighbours_.emplace_hint(neighbours_.end(), j->first);
+                    }
+                }
+            }
+        }
+    }
+#define QH_ITER
+#ifndef QH_ITER
     struct counter
             : std::iterator< std::output_iterator_tag, void, void, void, void >
     {
@@ -328,61 +382,7 @@ struct convex_hull
         size_type & counter_;
 
     };
-
-    void
-    create_simplex()
-    {
-        {
-            size_type const size_ = points_.size();
-            assert(dimension_ < size_);
-            for (size_type i = 0; i < size_; ++i) {
-                internal_set_.push_back(i);
-            }
-        }
-        point_list vertices_;
-        vertices_.splice(vertices_.end(), internal_set_, internal_set_.begin());
-        for (size_type i = 0; i < dimension_; ++i) {
-            steal_best(internal_set_, vertices_);
-        }
-        assert(vertices_.size() == 1 + dimension_); // (N + 1) vertices defining a simplex
-        internal_set_.splice(internal_set_.end(), vertices_, vertices_.begin());
-        assert(vertices_.size() == dimension_); // N vertices defining a facet
-        boolean_type outward_ = !(G(0.0L) < steal_best(internal_set_, vertices_)); // is top oriented?
-        auto const vbeg = vertices_.cbegin();
-        auto const vend = vertices_.cend();
-#ifndef NDEBUG
-        point_type inner_point_ = points_.at(*vbeg);
-        {
-            auto it = vbeg;
-            while (++it != vend) {
-                inner_point_ += points_.at(*it);
-            }
-            inner_point_ /= G(1 + dimension_);
-        }
 #endif
-        auto const fend = facets_.end();
-        for (auto exclusive = vend; exclusive != vbeg; --exclusive) {
-            size_type const n = facets_.size();
-            auto const f = facets_.emplace_hint(fend, n, facet(vbeg, exclusive, vend, outward_));
-            facet & facet_ = f->second;
-            rank(partition(facet_, internal_set_), n);
-            assert(outward_ == !(G(0.0L) < orientation(facet_.vertices_, inner_point_)));
-            outward_ = !outward_;
-        }
-        assert(dimension_ + 1 == facets_.size());
-        internal_set_.clear();
-        {
-            auto const fbeg = facets_.begin();
-            for (auto i = fbeg; i != fend; ++i) {
-                facet_set & neighbours_ = i->second.neighbours_;
-                for (auto j = fbeg; j != fend; ++j) {
-                    if (j != i) {
-                        neighbours_.emplace_hint(neighbours_.end(), j->first);
-                    }
-                }
-            }
-        }
-    }
 
     void
     create_convex_hull()
@@ -453,10 +453,16 @@ struct convex_hull
                 for (auto first = newfacets_.begin(); first != nend; ++first) {
                     size_type const f = *first;
                     facet & first_ = facets_.at(f);
+#ifndef QH_ITER
                     points_type const & ofirst_ = first_.points_;
+#else
+                    auto const lbeg = first_.points_.cbegin();
+                    auto const lend = first_.points_.cend();
+#endif
                     for (auto second = std::next(first); second != nend; ++second) {
                         size_type const s = *second;
                         facet & second_ = facets_.at(s);
+#ifndef QH_ITER
                         points_type const & osecond_ = second_.points_;
                         size_type count_ = 0;
                         std::set_difference(ofirst_.cbegin(), ofirst_.cend(),
@@ -466,6 +472,47 @@ struct convex_hull
                             first_.neighbours_.insert(s);
                             second_.neighbours_.insert(f);
                         }
+#else
+                        auto const rend = second_.points_.cend();
+                        auto r = second_.points_.cbegin();
+                        auto l = lbeg;
+                        bool lgood = false;
+                        bool rgood = false;
+                        while (l != lend) {
+                            if (r == rend) {
+                                lgood = (lgood != (std::distance(l, lend) == 1)); // xor
+                                break;
+                            }
+                            size_type const left = *l;
+                            size_type const right = *r;
+                            if (left < right) {
+                                if (lgood) {
+                                    lgood = false;
+                                    break;
+                                } else {
+                                    lgood = true;
+                                }
+                                ++l;
+                            } else {
+                                if (right < left) {
+                                    if (rgood) {
+                                        lgood = false;
+                                        break;
+                                    } else {
+                                        rgood = true;
+                                    }
+                                } else {
+                                    ++l;
+                                }
+                                ++r;
+                            }
+                        }
+                        rgood = (rgood != (std::distance(r, rend) == 1)); // xor
+                        if (lgood && rgood) {
+                            first_.neighbours_.insert(s);
+                            second_.neighbours_.insert(f);
+                        }
+#endif
                     }
                 }
             }
