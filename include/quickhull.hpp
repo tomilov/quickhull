@@ -289,6 +289,61 @@ struct convex_hull
     }
 
     void
+    adjacency(facets_type const & _newfacets)
+    {
+        auto const nend = _newfacets.end();
+        for (auto first = _newfacets.begin(); first != nend; ++first) {
+            size_type const f = *first;
+            facet & first_ = facets_.at(f);
+            auto const lbeg = first_.points_.cbegin();
+            auto const lend = first_.points_.cend();
+            for (auto second = std::next(first); second != nend; ++second) {
+                size_type const s = *second;
+                facet & second_ = facets_.at(s);
+                auto const rend = second_.points_.cend();
+                auto r = second_.points_.cbegin();
+                auto l = lbeg;
+                bool lgood = false;
+                bool rgood = false;
+                while (l != lend) {
+                    if (r == rend) {
+                        lgood = (lgood != (++l == lend)); // xor
+                        break;
+                    }
+                    size_type const left = *l;
+                    size_type const right = *r;
+                    if (left < right) {
+                        if (lgood) {
+                            lgood = false;
+                            break;
+                        } else {
+                            lgood = true;
+                        }
+                        ++l;
+                    } else {
+                        if (right < left) {
+                            if (rgood) {
+                                lgood = false;
+                                break;
+                            } else {
+                                rgood = true;
+                            }
+                        } else {
+                            ++l;
+                        }
+                        ++r;
+                    }
+                }
+                rgood = (rgood != (++r == rend)); // xor
+                if (lgood && rgood) {
+                    first_.neighbours_.insert(s);
+                    second_.neighbours_.insert(f);
+                }
+            }
+        }
+    }
+
+    void
     create_simplex()
     {
         {
@@ -341,48 +396,6 @@ struct convex_hull
             }
         }
     }
-#define QH_ITER
-#ifndef QH_ITER
-    struct counter
-            : std::iterator< std::output_iterator_tag, void, void, void, void >
-    {
-
-        counter(size_type & _counter)
-            : counter_(_counter)
-        { ; }
-
-        counter &
-        operator ++ ()
-        {
-            ++counter_;
-            return *this;
-        }
-
-        counter
-        operator ++ (int)
-        {
-            return operator ++ ();
-        }
-
-        counter &
-        operator * ()
-        {
-            return *this;
-        }
-
-        template< typename T >
-        counter &
-        operator = (T &&)
-        {
-            return *this;
-        }
-
-    private :
-
-        size_type & counter_;
-
-    };
-#endif
 
     void
     create_convex_hull()
@@ -393,10 +406,10 @@ struct convex_hull
         auto const fend = facets_.end();
         for (size_type furthest = get_furthest(facet_key); furthest != facet_key; furthest = get_furthest(facet_key)) {
             facet & facet_ = facets_.at(furthest);
-            facet_set visible_facets_{furthest};
             size_type const apex = facet_.outside_set_.front();
             facet_.outside_set_.pop_front();
-            {
+            facet_set visible_facets_{furthest};
+            { // find visible facets
                 facet_set pool_ = facet_.neighbours_;
                 facet_set visited_{furthest};
                 while (!pool_.empty()) {
@@ -421,13 +434,13 @@ struct convex_hull
                 facet const & visible_facet_ = facets_.at(v);
                 points_type const & vertices_ = visible_facet_.vertices_;
                 for (size_type const n : visible_facet_.neighbours_) {
-                    if (visible_facets_.find(n) == vfend) { // facets intersection with keeping of points order
+                    if (visible_facets_.find(n) == vfend) { // neighbour is not visible
                         facet & horizon_facet_ = facets_.at(n);
-                        point_set horizon_(horizon_facet_.vertices_.cbegin(),
-                                           horizon_facet_.vertices_.cend()); // n * log(n) +
+                        point_set horizon_(horizon_facet_.points_.cbegin(),
+                                           horizon_facet_.points_.cend()); // `linear in N if the range is already sorted'
                         auto const hend = horizon_.end();
-                        points_type ridge_; // horizon ridge and furthest point
-                        for (size_type const p : vertices_) {
+                        points_type ridge_; // horizon ridge + furthest point -> new facet
+                        for (size_type const p : vertices_) { // facets intersection with keeping of points order as in visible facet
                             auto const h = horizon_.find(p);
                             if (h == hend) {
                                 ridge_.push_back(apex);
@@ -448,74 +461,7 @@ struct convex_hull
                     }
                 }
             }
-            {
-                auto const nend = newfacets_.end();
-                for (auto first = newfacets_.begin(); first != nend; ++first) {
-                    size_type const f = *first;
-                    facet & first_ = facets_.at(f);
-#ifndef QH_ITER
-                    points_type const & ofirst_ = first_.points_;
-#else
-                    auto const lbeg = first_.points_.cbegin();
-                    auto const lend = first_.points_.cend();
-#endif
-                    for (auto second = std::next(first); second != nend; ++second) {
-                        size_type const s = *second;
-                        facet & second_ = facets_.at(s);
-#ifndef QH_ITER
-                        points_type const & osecond_ = second_.points_;
-                        size_type count_ = 0;
-                        std::set_difference(ofirst_.cbegin(), ofirst_.cend(),
-                                            osecond_.cbegin(), osecond_.cend(),
-                                            counter{count_});
-                        if (count_ == 1) {
-                            first_.neighbours_.insert(s);
-                            second_.neighbours_.insert(f);
-                        }
-#else
-                        auto const rend = second_.points_.cend();
-                        auto r = second_.points_.cbegin();
-                        auto l = lbeg;
-                        bool lgood = false;
-                        bool rgood = false;
-                        while (l != lend) {
-                            if (r == rend) {
-                                lgood = (lgood != (std::distance(l, lend) == 1)); // xor
-                                break;
-                            }
-                            size_type const left = *l;
-                            size_type const right = *r;
-                            if (left < right) {
-                                if (lgood) {
-                                    lgood = false;
-                                    break;
-                                } else {
-                                    lgood = true;
-                                }
-                                ++l;
-                            } else {
-                                if (right < left) {
-                                    if (rgood) {
-                                        lgood = false;
-                                        break;
-                                    } else {
-                                        rgood = true;
-                                    }
-                                } else {
-                                    ++l;
-                                }
-                                ++r;
-                            }
-                        }
-                        rgood = (rgood != (std::distance(r, rend) == 1)); // xor
-                        if (lgood && rgood) {
-                            first_.neighbours_.insert(s);
-                            second_.neighbours_.insert(f);
-                        }
-#endif
-                    }
-                }
-            }
+            adjacency(newfacets_);
             point_list outside_set_;
             for (size_type const v : visible_facets_) {
                 auto const visible_facet = facets_.find(v);
