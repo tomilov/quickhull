@@ -15,7 +15,7 @@ int main()
     using point_type = typename H::point_type;
 
     std::ifstream ifs_;
-    ifs_.open("points.txt"); // rbox n D3 100 > points.txt
+    ifs_.open("points.txt"); // rbox n D3 s 100 > points.txt
     if (!ifs_.is_open()) {
         std::cerr << "file is not open" << std::endl;
         return EXIT_FAILURE;
@@ -54,17 +54,16 @@ int main()
         std::cerr << "output file cannot be truncated" << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout.rdbuf()->pubsetbuf(nullptr, 0);
-    std::cout << "D = " << dim_ << std::endl;
-    std::cout << "N = " << count_ << std::endl;
-    H convex_hull_(points_.cbegin(), points_.cend());
-    convex_hull_.create_convex_hull();
-    //convex_hull_.create_simplex();
-
     ofs_ << "reset" << std::endl;
+    ofs_ << "set autoscale" << std::endl;
     switch (dim_) {
-    case 1 :
+    case 1 : {
+        ofs_ << "set xrange [-0.5:0.5];" << std::endl;
+        ofs_ << "plot";
+        break;
+    }
     case 2 : {
+        ofs_ << "set size square; set xrange [-0.5:0.5]; set yrange [-0.5:0.5];" << std::endl;
         ofs_ << "plot";
         break;
     }
@@ -78,6 +77,13 @@ int main()
         return EXIT_FAILURE;
     }
     }
+    std::cout.rdbuf()->pubsetbuf(nullptr, 0);
+    std::cout << "D = " << dim_ << std::endl;
+    std::cout << "N = " << count_ << std::endl;
+    H convex_hull_(points_.cbegin(), points_.cend());
+    convex_hull_.create_convex_hull();
+    //convex_hull_.create_simplex();
+    //return EXIT_SUCCESS;
     ofs_ << " '-' with points, '-' with labels offset 0,char 1";
     for (std::size_t i = 0; i < convex_hull_.facets_.size(); ++i) {
         ofs_ << ", '-' with lines notitle";

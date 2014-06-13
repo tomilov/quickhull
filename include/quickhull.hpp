@@ -91,18 +91,16 @@ struct convex_hull
         , points_(_first, _last)
     {
         assert(0 < dimension_);
+        for (point_type const & point_ : points_) {
+            if (point_.size() != dimension_) {
+                throw bad_geometry("dimensionalities does not match");
+            }
+        }
     }
 
     size_type dimension_;
     point_refs_type points_;
-
-    struct hyperplane // oriented hyperplane
-    {
-
-        point_type unit_normal_;
-        point_type offset_; // offset from the origin
-
-    };
+    point_list internal_set_;
 
     struct facet;
 
@@ -134,6 +132,12 @@ struct convex_hull
             std::sort(points_.begin(), points_.end());
         }
 
+        points_type vertices_; // oriented
+        points_type points_;   // non-oriented
+        boolean_type outward_;
+        facet_set neighbours_;
+        points_type outside_set_; // if not empty, then first point is furthest for this facet
+
         boolean_type
         further(G const & _nearer, G const & _further) const
         {
@@ -144,53 +148,27 @@ struct convex_hull
             }
         }
 
-        boolean_type
-        below(G const & _volume) const
-        {
-            if (outward_) {
-                return (G(0.0L) < _volume);
-            } else {
-                return (_volume < -G(0.0L));
-            }
-        }
-
-        points_type vertices_; // oriented
-        points_type points_;   // non-oriented
-        boolean_type outward_;
-        facet_set neighbours_;
-        points_type outside_set_; // if not empty, then first point is best for this facet
-
-        friend
-        std::ostream &
-        operator << (std::ostream & _out, facet const & _facet)
-        {
-            _out << "d " << std::boolalpha << _facet.outward_ << " : v ";
-            std::copy(_facet.vertices_.cbegin(), _facet.vertices_.cend(), std::ostream_iterator< size_type >(_out, ";"));
-            _out << " : n ";
-            std::copy(_facet.neighbours_.cbegin(), _facet.neighbours_.cend(), std::ostream_iterator< size_type >(_out, ";"));
-            _out << " : o ";
-            std::copy(_facet.outside_set_.cbegin(), _facet.outside_set_.cend(), std::ostream_iterator< size_type >(_out, ";"));
-            return _out;
-        }
-
     };
 
     using facets_map = std::map< size_type, facet >;
-    using facet_iterator = typename facets_map::iterator;
     using facets_type = std::deque< size_type >;
 
     facets_map facets_;
 
-    G
-    signed_distance_to_hyperplane(hyperplane const & _hyperplane, point_type const & _point) const
+    boolean_type
+    below(facet const & _facet, G const & _orientation) const
     {
-        return (_hyperplane.unit_normal_ * (_point - _hyperplane.offset_)).sum();
+        if (_facet.outward_) {
+            return (G(0.0L) < _orientation);
+        } else {
+            return (_orientation < -G(0.0L));
+        }
     }
 
     // http://math.stackexchange.com/questions/822741/
     template< typename vertices >
     G
-    volume(vertices const & _vertices, point_type const & _apex) const
+    orientation(vertices const & _vertices, point_type const & _apex) const
     {
         size_type const size_ = _vertices.size(); // dimensionality of the subspace of interest
         assert(!(_apex.size() < size_));
@@ -215,9 +193,9 @@ struct convex_hull
 
     template< typename vertices >
     G
-    volume(vertices const & _vertices, size_type const _apex) const
+    orientation(vertices const & _vertices, size_type const _apex) const
     {
-        return volume(_vertices, points_.at(_apex));
+        return orientation(_vertices, points_.at(_apex));
     }
 
     G
@@ -237,20 +215,20 @@ struct convex_hull
     {
         auto it = _from.begin();
         auto const end = _from.end();
-        G volume_ = volume(_to, *it);
+        G orientation_ = orientation(_to, *it);
         auto furthest = it;
         while (++it != end) {
-            G const v_ = volume(_to, *it);
-            if (abs(volume_) < abs(v_)) {
-                volume_ = v_;
+            G const o_ = orientation(_to, *it);
+            if (abs(orientation_) < abs(o_)) {
+                orientation_ = o_;
                 furthest = it;
             }
         }
-        if (!(G(0.0L) < abs(volume_))) {
+        if (!(G(0.0L) < abs(orientation_))) {
             throw bad_geometry("can't find linearly independent point");
         }
         _to.splice(_to.end(), _from, furthest);
-        return volume_;
+        return orientation_;
     }
 
     using ranking_type = std::multimap< G, size_type >;
@@ -259,10 +237,10 @@ struct convex_hull
     ranking_meta_type ranking_meta_;
 
     void
-    rank(G const _volume, size_type const _facet)
+    rank(G const _orientation, size_type const _facet)
     {
-        if (G(0.0L) < _volume) {
-            auto const r = ranking_.emplace(_volume, _facet);
+        if (G(0.0L) < _orientation) {
+            auto const r = ranking_.emplace(_orientation, _facet);
             ranking_meta_.emplace(_facet, r);
         }
     }
@@ -294,13 +272,13 @@ struct convex_hull
         auto it = _points.begin();
         auto const end = _points.end();
         points_type & outside_set_ = _facet.outside_set_;
-        G volume_(0.0L);
+        G orientation_(0.0L);
         while (it != end) {
             auto const next = std::next(it);
-            G const v_ = volume(_facet.vertices_, *it);
-            if (_facet.below(v_)) {
-                if (outside_set_.empty() || _facet.further(volume_, v_)) {
-                    volume_ = v_;
+            G const o_ = orientation(_facet.vertices_, *it);
+            if (below(_facet, o_)) {
+                if (outside_set_.empty() || _facet.further(orientation_, o_)) {
+                    orientation_ = o_;
                     outside_set_.push_front(*it);
                 } else {
                     outside_set_.push_back(*it);
@@ -309,7 +287,7 @@ struct convex_hull
             }
             it = next;
         }
-        return abs(volume_);
+        return abs(orientation_);
     }
 
     struct counter
@@ -330,7 +308,7 @@ struct convex_hull
         counter
         operator ++ (int)
         {
-            return {counter_++};
+            return operator ++ ();
         }
 
         counter &
@@ -346,11 +324,6 @@ struct convex_hull
             return *this;
         }
 
-        operator size_type () const
-        {
-            return counter_;
-        }
-
     private :
 
         size_type & counter_;
@@ -360,23 +333,22 @@ struct convex_hull
     void
     create_simplex()
     {
-        point_list point_list_;
         {
             size_type const size_ = points_.size();
             assert(dimension_ < size_);
             for (size_type i = 0; i < size_; ++i) {
-                point_list_.push_back(i);
+                internal_set_.push_back(i);
             }
         }
         point_list vertices_;
-        vertices_.splice(vertices_.end(), point_list_, point_list_.begin());
+        vertices_.splice(vertices_.end(), internal_set_, internal_set_.begin());
         for (size_type i = 0; i < dimension_; ++i) {
-            steal_best(point_list_, vertices_);
+            steal_best(internal_set_, vertices_);
         }
-        assert(vertices_.size() == 1 + dimension_); // (N + 1) vertices defines a simplex
-        point_list_.splice(point_list_.end(), vertices_, vertices_.begin());
-        assert(vertices_.size() == dimension_); // N vertices defines a facet
-        boolean_type outward_ = !(G(0.0L) < steal_best(point_list_, vertices_)); // top oriented?
+        assert(vertices_.size() == 1 + dimension_); // (N + 1) vertices defining a simplex
+        internal_set_.splice(internal_set_.end(), vertices_, vertices_.begin());
+        assert(vertices_.size() == dimension_); // N vertices defining a facet
+        boolean_type outward_ = !(G(0.0L) < steal_best(internal_set_, vertices_)); // is top oriented?
         auto const vbeg = vertices_.cbegin();
         auto const vend = vertices_.cend();
 #ifndef NDEBUG
@@ -394,17 +366,12 @@ struct convex_hull
             size_type const n = facets_.size();
             auto const f = facets_.emplace_hint(fend, n, facet(vbeg, exclusive, vend, outward_));
             facet & facet_ = f->second;
-            G const v_ = partition(facet_, point_list_);
-            rank(v_, n);
-            assert(outward_ == !(G(0.0L) < volume(facet_.vertices_, inner_point_)));
+            rank(partition(facet_, internal_set_), n);
+            assert(outward_ == !(G(0.0L) < orientation(facet_.vertices_, inner_point_)));
             outward_ = !outward_;
         }
         assert(dimension_ + 1 == facets_.size());
-        std::cout << "inner points: ";
-        std::copy(point_list_.cbegin(), point_list_.cend(), std::ostream_iterator< size_type >(std::cout, ";"));
-        std::cout << "inner points completely removed" << std::endl;
-        point_list_.clear();
-        std::cout << std::endl;
+        internal_set_.clear();
         {
             auto const fbeg = facets_.begin();
             for (auto i = fbeg; i != fend; ++i) {
@@ -416,11 +383,6 @@ struct convex_hull
                 }
             }
         }
-        std::cout << "initial simplex:" << std::endl;
-        for (auto const & f : facets_) {
-            std::cout << "initial facet #" << f.first << " = " << f.second << std::endl;
-        }
-        std::cout << std::endl;
     }
 
     void
@@ -431,85 +393,62 @@ struct convex_hull
         assert(facet_key == dimension_ + 1);
         auto const fend = facets_.end();
         for (size_type furthest = get_furthest(facet_key); furthest != facet_key; furthest = get_furthest(facet_key)) {
-            std::cout << furthest << " ? " << facet_key << std::endl;
             facet & facet_ = facets_.at(furthest);
-            std::cout << "best facet #" << furthest << " = " << facet_ << std::endl;
             facet_set visible_facets_{furthest};
             size_type const apex = facet_.outside_set_.front();
             facet_.outside_set_.pop_front();
-            std::cout << "furthest point is p#" << apex << std::endl;
             {
                 facet_set pool_ = facet_.neighbours_;
                 facet_set visited_{furthest};
                 while (!pool_.empty()) {
                     auto const first = pool_.begin();
                     size_type const f = *first;
-                    facet const & candidate_ = facets_.at(f);
-                    if (candidate_.below(volume(candidate_.vertices_, apex))) { // if point is above the neighbour, then add they to visible set
+                    facet const & facet_ = facets_.at(f);
+                    if (below(facet_, orientation(facet_.vertices_, apex))) {
                         visible_facets_.insert(f);
-                        std::cout << "is visible facet #" << f << std::endl;
-                        std::set_difference(candidate_.neighbours_.cbegin(), candidate_.neighbours_.cend(),
+                        std::set_difference(facet_.neighbours_.cbegin(), facet_.neighbours_.cend(),
                                             visited_.cbegin(), visited_.cend(),
                                             std::inserter(pool_, pool_.end()));
-                    } else {
-                        std::cout << "is invisible facet #" << f << std::endl;
                     }
                     visited_.insert(f);
                     pool_.erase(first);
-                    std::cout << "pool = ";
-                    std::copy(pool_.cbegin(), pool_.cend(), std::ostream_iterator< size_type >(std::cout, ";"));
-                    std::cout << std::endl;
                 }
             }
-            std::cout << "visible facets: ";
-            std::copy(visible_facets_.cbegin(), visible_facets_.cend(), std::ostream_iterator< size_type >(std::cout, ";"));
-            std::cout << std::endl;
-            std::cout << "for each visible facet (boundary finding):" << std::endl;
-            // the boundary of visible_facets_ is the set of horizon ridges
+            // the boundary of visible facets is the set of horizon ridges
             // Each ridge signifies the adjacency of two facets.
             facets_type newfacets_;
             auto const vfend = visible_facets_.end();
             for (size_type const v : visible_facets_) {
                 facet const & visible_facet_ = facets_.at(v);
-                std::cout << " visible facet #" << v << " = " << visible_facet_ << std::endl;
-                std::cout << " for each visible facet neighbours:" << std::endl;
                 points_type const & vertices_ = visible_facet_.vertices_;
                 for (size_type const n : visible_facet_.neighbours_) {
                     if (visible_facets_.find(n) == vfend) { // facets intersection with keeping of points order
                         facet & horizon_facet_ = facets_.at(n);
-                        std::cout << "  beyond the horizon neighbouring facet #" << n << " = " << horizon_facet_ << std::endl;
                         point_set horizon_(horizon_facet_.vertices_.cbegin(),
                                            horizon_facet_.vertices_.cend()); // n * log(n) +
                         auto const hend = horizon_.end();
-                        points_type ridge_;
-                        for (size_type const p : vertices_) { // n *
-                            auto const h = horizon_.find(p); // (log(n) +
+                        points_type ridge_; // horizon ridge and furthest point
+                        for (size_type const p : vertices_) {
+                            auto const h = horizon_.find(p);
                             if (h == hend) {
                                 ridge_.push_back(apex);
                             } else {
                                 ridge_.push_back(p);
-                                horizon_.erase(h); // const)
+                                horizon_.erase(h);
                             }
-                        }std::cout << std::flush;
+                        }
                         assert(horizon_.size() == 1); // horizon_ contains the only invisible point beyond the horizon
                         assert(ridge_.size() == dimension_); // ridge_ contains newfacet vertices (ridge + current furthest point)
-                        { // replace visible facet became internal with newly created facet
-                            std::cout << "  for this neighbouring facet repalce old (visible) neighbouring facet #" << v << " by #" << facet_key << std::endl;
+                        { // replace visible facet became internal with newly created facet in adjacency
                             horizon_facet_.neighbours_.erase(v);
                             horizon_facet_.neighbours_.insert(horizon_facet_.neighbours_.cend(), facet_key);
                         }
                         newfacets_.push_back(facet_key);
-                        auto const f = facets_.emplace_hint(fend, facet_key, facet(std::move(ridge_), visible_facet_.outward_, n));
+                        facets_.emplace_hint(fend, facet_key, facet(std::move(ridge_), visible_facet_.outward_, n));
                         ++facet_key;
-                        std::cout << "  new facet #" << f->first << " = " << f->second << std::endl;
                     }
                 }
             }
-            std::cout << std::endl;
-            std::cout << " full list of newly created facets: ";
-            std::copy(newfacets_.cbegin(), newfacets_.cend(), std::ostream_iterator< size_type >(std::cout, ";"));
-            std::cout << std::endl;
-            std::cout << " for newly created facets add neighbouring facets:" << std::endl;
             {
                 auto const nend = newfacets_.end();
                 for (auto first = newfacets_.begin(); first != nend; ++first) {
@@ -527,12 +466,10 @@ struct convex_hull
                         if (count_ == 1) {
                             first_.neighbours_.insert(s);
                             second_.neighbours_.insert(f);
-                            std::cout << "new neighbours: #" << f << " + #" << s << std::endl;
                         }
                     }
                 }
             }
-            std::cout << " for each visible facet steal its outside set into single pool" << std::endl;
             point_list outside_set_;
             for (size_type const v : visible_facets_) {
                 auto const visible_facet = facets_.find(v);
@@ -543,23 +480,11 @@ struct convex_hull
                                     visible_facet_.outside_set_.cend());
                 facets_.erase(visible_facet);
                 unrank(v);
-                std::cout << "  remove visible facet #" << v << std::endl;
             }
-            std::cout << " full list of possible outside points for newly created facets: ";
-            std::copy(outside_set_.cbegin(), outside_set_.cend(), std::ostream_iterator< size_type >(std::cout, ";"));
-            std::cout << std::endl;
             for (size_type const n : newfacets_) {
-                facet & newfacet_ = facets_.at(n);
-                G const v_ = partition(newfacet_, outside_set_);
-                rank(v_, n);
-                //assert(outward_ == !(G(0.0L) < volume(facet_.vertices_, inner_point_)));
+                rank(partition(facets_.at(n), outside_set_), n);
             }
-            std::cout << furthest << " ? " << facet_key << std::endl;
-            std::cout << "facets count: " << facets_.size() << std::endl << std::endl;
-        }
-        std::cout << "result:" << std::endl;
-        for (auto const & facet_ : facets_) {
-            std::cout << "result #" << facet_.first << " = " << facet_.second << std::endl;
+            internal_set_.splice(internal_set_.cend(), outside_set_);
         }
     }
 
