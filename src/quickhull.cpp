@@ -43,16 +43,24 @@ int main()
             }
         }
     }
+    assert(points_.size() == count_);
     if (count_ != points_.size()) {
         std::cerr << "input file format error" << std::endl;
         return EXIT_FAILURE;
     }
     std::ofstream ofs_;
-    ofs_.open("script.txt");
+    ofs_.open("script.txt"); // gnuplot> load 'script.txt'
     if (!ofs_.is_open()) {
         std::cerr << "output file cannot be truncated" << std::endl;
         return EXIT_FAILURE;
     }
+    std::cout.rdbuf()->pubsetbuf(nullptr, 0);
+    std::cout << "D = " << dim_ << std::endl;
+    std::cout << "N = " << count_ << std::endl;
+    H convex_hull_(points_.cbegin(), points_.cend());
+    convex_hull_.create_convex_hull();
+    //convex_hull_.create_simplex();
+
     ofs_ << "reset" << std::endl;
     switch (dim_) {
     case 1 :
@@ -61,7 +69,7 @@ int main()
         break;
     }
     case 3 : {
-        ofs_ << "set view equal xyz; set view 0,0; set xrange [-0.5:0.5]; set yrange [-0.5:0.5]; set zrange [-0.5:0.5]; set xyplane at -0.5" << std::endl;
+        ofs_ << "set view equal xyz; set view 0,0; set xrange [-0.5:0.5]; set yrange [-0.5:0.5]; set zrange [-0.5:0.5]; set xyplane at 0.0" << std::endl;
         ofs_ << "splot";
         break;
     }
@@ -70,7 +78,11 @@ int main()
         return EXIT_FAILURE;
     }
     }
-    ofs_ << " '-' w p, '-' w l" << std::endl;
+    ofs_ << " '-' with points, '-' with labels offset 0,char 1";
+    for (std::size_t i = 0; i < convex_hull_.facets_.size(); ++i) {
+        ofs_ << ", '-' with lines notitle";
+    }
+    ofs_ << std::endl;
     for (point_type const & point_ : points_) {
         for (G const & coordinate_ : point_) {
             ofs_ << coordinate_ << ' ';
@@ -78,10 +90,18 @@ int main()
         ofs_ << std::endl;
     }
     ofs_ << 'e' << std::endl;
-    H convex_hull_(points_.cbegin(), points_.cend());
-    convex_hull_.create_convex_hull();
+    std::size_t i = 0;
+    for (point_type const & point_ : points_) {
+        for (G const & coordinate_ : point_) {
+            ofs_ << coordinate_ << ' ';
+        }
+        ofs_ << i << std::endl;
+        ++i;
+    }
+    ofs_ << 'e' << std::endl;
     for (auto const & facet_ : convex_hull_.facets_) {
         auto const & vertices_ = facet_.second.vertices_;
+        std::cout << "facet #" << facet_.first << std::endl;
         for (size_type const vertex_ : vertices_) {
             for (G const & coordinate_ : points_.at(vertex_)) {
                 ofs_ << coordinate_ << ' ';
@@ -92,8 +112,8 @@ int main()
         for (G const & coordinate_ : first_vertex_) {
             ofs_ << coordinate_ << ' ';
         }
-        ofs_ << std::endl << std::endl;
+        ofs_ << std::endl;
+        ofs_ << 'e' << std::endl;
     }
-    ofs_ << 'e' << std::endl;
     return EXIT_SUCCESS;
 }

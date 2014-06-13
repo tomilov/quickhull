@@ -17,8 +17,8 @@ CONFIG(release, debug|release) {
 CONFIG(debug, debug|release) {
 }
 
-QMAKE_CXXFLAGS_DEBUG += -fno-default-inline -fno-inline
-QMAKE_LFLAGS_DEBUG   += -fno-default-inline -fno-inline
+#QMAKE_CXXFLAGS_DEBUG += -fno-default-inline -fno-inline
+#QMAKE_LFLAGS_DEBUG   += -fno-default-inline -fno-inline
 
 win32 {
     CONFIG += console thread
