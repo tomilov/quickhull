@@ -4,7 +4,6 @@
 #include <boost/numeric/ublas/lu.hpp>
 #include <boost/numeric/ublas/io.hpp>
 
-#include <valarray>
 #include <deque>
 #include <set>
 #include <map>
@@ -52,17 +51,17 @@ private :
 using boolean_type = bool;
 using size_type = std::size_t;
 
-template< typename G >
-G
-determinant(boost::numeric::ublas::matrix< G > _m)
+template< typename F >
+F
+determinant(boost::numeric::ublas::matrix< F > _m)
 {
     size_type const size_ = _m.size1();
     assert(_m.size2() == size_);
     boost::numeric::ublas::permutation_matrix< size_type > pm_(size_);
     if (0 < boost::numeric::ublas::lu_factorize(_m, pm_)) {
-        return G(0.0L); // singular matrix
+        return F(0.0L); // singular matrix
     } else {
-        G determinant_(1.0L);
+        F determinant_(1.0L);
         for (size_type i = 0; i < size_; ++i) {
             if (i == pm_(i)) {
                 determinant_ *= +_m(i, i);
@@ -74,12 +73,12 @@ determinant(boost::numeric::ublas::matrix< G > _m)
     }
 }
 
-template< typename G >
+template< typename point_type >
 struct convex_hull
 {
 
-    using self = convex_hull< G >;
-    using point_type = std::valarray< G >;
+    using self = convex_hull< point_type >;
+    using G = typename point_type::value_type;
     using point_refs_type = std::deque< std::reference_wrapper< point_type const > >;
     using point_list = std::list< size_type >;
     using point_set = std::set< size_type >;

@@ -1,9 +1,10 @@
 #include "quickhull.hpp"
 
-#include <fstream>
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <string>
+#include <valarray>
 
 #include <cstdlib>
 #include <cstdio>
@@ -11,8 +12,8 @@
 int main()
 {
     using G = double;
-    using H = convex_hull< G >;
-    using point_type = typename H::point_type;
+    using point_type = std::valarray< G >;
+    using H = convex_hull< point_type >;
 
     std::ifstream ifs_;
     ifs_.open("points.txt"); // rbox n D3 s 100 > points.txt
