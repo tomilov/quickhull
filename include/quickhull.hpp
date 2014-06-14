@@ -16,6 +16,8 @@
 
 #include <cassert>
 
+#include <iostream>
+
 struct bad_geometry
         : std::runtime_error
 {
@@ -47,6 +49,27 @@ struct convex_hull
     size_type dimension_;
     point_refs_type points_;
     point_list internal_set_;
+
+    template< typename ForwardIterator >
+    convex_hull(size_type const _dimension,
+                ForwardIterator _first, ForwardIterator _last)
+        : dimension_(_dimension)
+        , points_(_first, _last)
+        , matrix_(dimension_ + 1)
+        , minor_(dimension_)
+    {
+        assert(0 < dimension_);
+#ifndef NDEBUG
+        for (point_type const & point_ : points_) {
+            assert(point_.size() == dimension_); // dimensionalities of input points does not match
+        }
+#endif
+        for (size_type i = 0; i < dimension_; ++i) {
+            matrix_[i].resize(dimension_ + 1);
+            minor_[i].resize(dimension_);
+        }
+        matrix_[dimension_].resize(dimension_ + 1);
+    }
 
     struct facet;
 
@@ -108,27 +131,6 @@ struct convex_hull
         point_set & points_ = ordered_[_facet_key];
         points_.insert(facet_.vertices_.cbegin(), facet_.vertices_.cend());
         return facet_;
-    }
-
-    template< typename ForwardIterator >
-    convex_hull(size_type const _dimension,
-                ForwardIterator _first, ForwardIterator _last)
-        : dimension_(_dimension)
-        , points_(_first, _last)
-        , matrix_(dimension_ + 1)
-        , minor_(dimension_)
-    {
-        assert(0 < dimension_);
-        for (point_type const & point_ : points_) {
-            if (point_.size() != dimension_) {
-                throw bad_geometry("dimensionalities of input points does not match");
-            }
-        }
-        for (size_type i = 0; i < dimension_; ++i) {
-            matrix_[i].resize(dimension_ + 1);
-            minor_[i].resize(dimension_);
-        }
-        matrix_[dimension_].resize(dimension_ + 1);
     }
 
     G
@@ -345,7 +347,7 @@ struct convex_hull
                 bool rgood = false;
                 while (l != lend) {
                     if (r == rend) {
-                        lgood = (lgood != (++l == lend)); // xor
+                        lgood = (lgood != ((l != lend) && (++l == lend)));
                         break;
                     }
                     size_type const left = *l;
@@ -372,10 +374,11 @@ struct convex_hull
                         ++r;
                     }
                 }
-                rgood = (rgood != (++r == rend)); // xor
-                if (lgood && rgood) {
-                    facets_.at(f).neighbours_.insert(s);
-                    facets_.at(s).neighbours_.insert(f);
+                if (lgood) {
+                    if (rgood != ((r != rend) && (++r == rend))) {
+                        facets_.at(f).neighbours_.insert(s);
+                        facets_.at(s).neighbours_.insert(f);
+                    }
                 }
             }
         }

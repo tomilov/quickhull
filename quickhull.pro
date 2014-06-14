@@ -13,8 +13,11 @@ INCLUDEPATH += "include/"
 DEPENDPATH += "include/"
 LIBS += -L"lib/"
 CONFIG(release, debug|release) {
+    DEFINES += NDEBUG=1
 }
 CONFIG(debug, debug|release) {
+    DEFINES += _DEBUG=1 DEBUG=1
+    DEFINES += _GLIBCXX_DEBUG=1
     DEFINES += BOOST_UBLAS_NDEBUG=1
 }
 
