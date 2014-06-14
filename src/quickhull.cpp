@@ -66,17 +66,14 @@ int main()
     ofs_ << "set autoscale" << std::endl;
     switch (dim_) {
     case 1 : {
-        ofs_ << "set xrange [-0.5:0.5];" << std::endl;
         ofs_ << "plot";
         break;
     }
     case 2 : {
-        ofs_ << "set size square; set xrange [-0.5:0.5]; set yrange [-0.5:0.5];" << std::endl;
         ofs_ << "plot";
         break;
     }
     case 3 : {
-        ofs_ << "set view equal xyz; set view 0,0; set xrange [-0.5:0.5]; set yrange [-0.5:0.5]; set zrange [-0.5:0.5]; set xyplane at 0.0" << std::endl;
         ofs_ << "splot";
         break;
     }
@@ -102,7 +99,7 @@ int main()
     }
     auto const & facets_ = convex_hull_.facets_;
     std::cout << "number of facets created = " << facets_.size() << std::endl;
-    ofs_ << " '-' with points, '-' with labels offset 0,char 1";
+    ofs_ << " '-' with points notitle, '-' with labels offset 0,char 1 notitle";
     for (std::size_t i = 0; i < facets_.size(); ++i) {
         ofs_ << ", '-' with lines notitle";
     }
