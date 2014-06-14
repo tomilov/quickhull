@@ -100,8 +100,10 @@ int main()
         steady_clock::time_point const end = steady_clock::now();
         std::cout << "time = " << duration_cast< microseconds >(end - start).count() << std::endl;
     }
+    auto const & facets_ = convex_hull_.facets_;
+    std::cout << "number of facets created = " << facets_.size() << std::endl;
     ofs_ << " '-' with points, '-' with labels offset 0,char 1";
-    for (std::size_t i = 0; i < convex_hull_.facets_.size(); ++i) {
+    for (std::size_t i = 0; i < facets_.size(); ++i) {
         ofs_ << ", '-' with lines notitle";
     }
     ofs_ << std::endl;
@@ -121,7 +123,7 @@ int main()
         ++i;
     }
     ofs_ << 'e' << std::endl;
-    for (auto const & facet_ : convex_hull_.facets_) {
+    for (auto const & facet_ : facets_) {
         auto const & vertices_ = facet_.second.vertices_;
         for (size_type const vertex_ : vertices_) {
             for (G const & coordinate_ : points_.at(vertex_)) {

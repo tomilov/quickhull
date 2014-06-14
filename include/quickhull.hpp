@@ -5,6 +5,7 @@
 #include <set>
 #include <map>
 #include <list>
+#include <valarray>
 #include <iterator>
 #include <algorithm>
 #include <utility>
@@ -152,7 +153,7 @@ struct convex_hull
         }
     }
 
-    using row_type = std::vector< G >;
+    using row_type = std::valarray< G >;
     using matrix_type = std::vector< row_type >;
 
     matrix_type matrix_;
