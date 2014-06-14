@@ -381,10 +381,9 @@ struct convex_hull
     create_simplex()
     {
         {
-            size_type i = 0;
-            for (point_type const & point_ : points_) {
+            size_type const size_ = points_.size();
+            for (size_type i = 0; i < size_; ++i) {
                 internal_set_.push_back(i);
-                ++i;
             }
         }
         point_list vertices_;
@@ -398,21 +397,10 @@ struct convex_hull
         bool outward_ = !(G(0.0L) < steal_best(internal_set_, vertices_)); // is top oriented?
         auto const vbeg = vertices_.cbegin();
         auto const vend = vertices_.cend();
-#ifndef NDEBUG
-        point_type inner_point_ = points_.at(*vbeg);
-        {
-            auto it = vbeg;
-            while (++it != vend) {
-                inner_point_ += points_.at(*it);
-            }
-            inner_point_ /= G(1 + dimension_);
-        }
-#endif
         for (auto exclusive = vend; exclusive != vbeg; --exclusive) { // creation of rest d facets of the simplex
             size_type const n = facets_.size();
             facet & facet_ = add_facet(n, vbeg, exclusive, vend, outward_);
             rank(partition(facet_, internal_set_), n);
-            assert(outward_ == !(G(0.0L) < orientation(facet_.vertices_, inner_point_)));
             outward_ = !outward_;
         }
         assert(dimension_ + 1 == facets_.size()); // simplex

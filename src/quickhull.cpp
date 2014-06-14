@@ -100,6 +100,17 @@ int main()
     }
     auto const & facets_ = convex_hull_.facets_;
     std::cout << "number of facets created = " << facets_.size() << std::endl;
+    for (auto const & f_ : facets_) {
+        auto const & facet_ = f_.second;
+        for (auto const & v : facet_.vertices_) {
+            std::cout << v << ' ';
+        }
+        std::cout << ' ';
+        for (auto const & c : facet_.coplanar_) {
+            std::cout << c << ' ';
+        }
+        std::cout << std::endl;
+    }
     ofs_ << " '-' with points notitle, '-' with labels offset 0,char 1 notitle";
     for (std::size_t i = 0; i < facets_.size(); ++i) {
         ofs_ << ", '-' with lines notitle";
