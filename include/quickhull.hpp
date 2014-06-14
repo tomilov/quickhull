@@ -34,36 +34,29 @@ struct bad_geometry
 
 };
 
-template< typename point_type >
+template< typename points_type >
 struct convex_hull
 {
 
     using size_type = std::size_t;
 
+    using point_type = typename points_type::value_type;
     using G = typename point_type::value_type;
     using point_refs_type = std::vector< std::reference_wrapper< point_type const > >;
     using point_list = std::list< size_type >;
     using point_set = std::set< size_type >;
-    using points_type = std::deque< size_type >;
+    using point_array = std::deque< size_type >;
 
     size_type dimension_;
-    point_refs_type points_;
+    points_type const & points_;
     point_list internal_set_;
 
-    template< typename ForwardIterator >
-    convex_hull(size_type const _dimension,
-                ForwardIterator _first, ForwardIterator _last)
+    convex_hull(size_type const _dimension, points_type const & _points)
         : dimension_(_dimension)
-        , points_(_first, _last)
+        , points_(_points)
         , matrix_(dimension_ + 1)
         , minor_(dimension_)
     {
-        assert(0 < dimension_);
-#ifndef NDEBUG
-        for (point_type const & point_ : points_) {
-            assert(point_.size() == dimension_); // dimensionalities of input points does not match
-        }
-#endif
         for (size_type i = 0; i < dimension_; ++i) {
             matrix_[i].resize(dimension_ + 1);
             minor_[i].resize(dimension_);
@@ -78,11 +71,11 @@ struct convex_hull
     struct facet // (d - 1)-dimensional faces
     {
 
-        points_type vertices_; // d points : oriented
+        point_array vertices_; // d points : oriented
         bool outward_;         // is top-oriented
         facet_set neighbours_;
-        points_type outside_set_; // if not empty, then first point is furthest from this facet
-        points_type coplanar_;
+        point_array outside_set_; // if not empty, then first point is furthest from this facet
+        point_array coplanar_;
 
         template< typename ForwardIterator >
         facet(ForwardIterator first, ForwardIterator mid, ForwardIterator last,
@@ -93,7 +86,7 @@ struct convex_hull
             vertices_.insert(vertices_.cend(), mid, last);
         }
 
-        facet(points_type && _vertices,
+        facet(point_array && _vertices,
               bool const _outward,
               size_type const _neighbour)
             : vertices_(std::move(_vertices))
@@ -128,8 +121,8 @@ struct convex_hull
     {
         auto const f = facets_.emplace_hint(facets_.cend(), _facet_key, facet(std::forward< args >(_args)...));
         facet & facet_ = f->second;
-        point_set & points_ = ordered_[_facet_key];
-        points_.insert(facet_.vertices_.cbegin(), facet_.vertices_.cend());
+        point_set & sorted_vertices_ = ordered_[_facet_key];
+        sorted_vertices_.insert(facet_.vertices_.cbegin(), facet_.vertices_.cend());
         return facet_;
     }
 
@@ -224,7 +217,7 @@ struct convex_hull
         auto v_ = _vertices.cbegin();
         for (size_type i = 0; i < size_; ++i) {
             assert(v_ != _vertices.cend());
-            point_type const & vertex_ = points_.at(*v_);
+            point_type const & vertex_ = points_[*v_];
             ++v_;
             assert(!(vertex_.size() < size_));
             for (size_type j = 0; j < size_; ++j) {
@@ -243,7 +236,7 @@ struct convex_hull
     G
     orientation(vertices const & _vertices, size_type const _apex)
     {
-        return orientation(_vertices, points_.at(_apex));
+        return orientation(_vertices, points_[_apex]);
     }
 
     G
@@ -388,10 +381,10 @@ struct convex_hull
     create_simplex()
     {
         {
-            size_type const size_ = points_.size();
-            assert(dimension_ < size_);
-            for (size_type i = 0; i < size_; ++i) {
+            size_type i = 0;
+            for (point_type const & point_ : points_) {
                 internal_set_.push_back(i);
+                ++i;
             }
         }
         point_list vertices_;
@@ -471,12 +464,12 @@ struct convex_hull
             auto const vfend = visible_facets_.end();
             for (size_type const v : visible_facets_) {
                 facet const & visible_facet_ = facets_.at(v);
-                points_type const & vertices_ = visible_facet_.vertices_;
+                point_array const & vertices_ = visible_facet_.vertices_;
                 for (size_type const n : visible_facet_.neighbours_) {
                     if (visible_facets_.find(n) == vfend) { // neighbour is not visible
                         point_set const & horizon_ = ordered_.at(n);
                         auto const hend = horizon_.end();
-                        points_type ridge_; // horizon ridge + furthest point -> new facet
+                        point_array ridge_; // horizon ridge + furthest point -> new facet
                         for (size_type const p : vertices_) { // facets intersection with keeping of points order as in visible facet
                             auto const h = horizon_.find(p);
                             if (h == hend) {

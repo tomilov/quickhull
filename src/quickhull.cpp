@@ -17,9 +17,6 @@
 
 int main()
 {
-    using G = double;
-    using point_type = std::valarray< G >;
-    using H = convex_hull< point_type >;
     using size_type = std::size_t;
 
     std::ifstream ifs_;
@@ -38,8 +35,11 @@ int main()
         std::cerr << "no count at second line" << std::endl;
         return EXIT_FAILURE;
     }
+    using G = double;
+    using point_type = std::valarray< G >;
+    using points_type = std::deque< point_type >;
     size_type const count_ = std::stoll(line_);
-    std::deque< point_type > points_;
+    points_type points_;
     while (std::getline(ifs_, line_)) {
         points_.emplace_back(dim_);
         point_type & point_ = points_.back();
@@ -85,7 +85,8 @@ int main()
     std::cout.rdbuf()->pubsetbuf(nullptr, 0);
     std::cout << "D = " << dim_ << std::endl;
     std::cout << "N = " << count_ << std::endl;
-    H convex_hull_(dim_, points_.cbegin(), points_.cend());
+    using H = convex_hull< points_type >;
+    H convex_hull_(dim_, points_);
     {
         using std::chrono::duration_cast;
         using std::chrono::microseconds;
