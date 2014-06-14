@@ -5,9 +5,15 @@
 #include <sstream>
 #include <string>
 #include <valarray>
+#include <chrono>
 
 #include <cstdlib>
 #include <cstdio>
+
+#include <iostream>
+
+#include <cstdlib>
+#include <cassert>
 
 int main()
 {
@@ -82,10 +88,18 @@ int main()
     std::cout.rdbuf()->pubsetbuf(nullptr, 0);
     std::cout << "D = " << dim_ << std::endl;
     std::cout << "N = " << count_ << std::endl;
-    H convex_hull_(points_.cbegin(), points_.cend());
-    convex_hull_.create_convex_hull();
-    //convex_hull_.create_simplex();
-    //return EXIT_SUCCESS;
+    H convex_hull_(dim_, points_.cbegin(), points_.cend());
+    {
+        using std::chrono::duration_cast;
+        using std::chrono::microseconds;
+        using std::chrono::steady_clock;
+        steady_clock::time_point const start = steady_clock::now();
+        {
+            convex_hull_.create_convex_hull();
+        }
+        steady_clock::time_point const end = steady_clock::now();
+        std::cout << "time = " << duration_cast< microseconds >(end - start).count() << std::endl;
+    }
     ofs_ << " '-' with points, '-' with labels offset 0,char 1";
     for (std::size_t i = 0; i < convex_hull_.facets_.size(); ++i) {
         ofs_ << ", '-' with lines notitle";
@@ -109,7 +123,6 @@ int main()
     ofs_ << 'e' << std::endl;
     for (auto const & facet_ : convex_hull_.facets_) {
         auto const & vertices_ = facet_.second.vertices_;
-        std::cout << "facet #" << facet_.first << std::endl;
         for (size_type const vertex_ : vertices_) {
             for (G const & coordinate_ : points_.at(vertex_)) {
                 ofs_ << coordinate_ << ' ';
