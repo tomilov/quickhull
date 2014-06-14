@@ -430,7 +430,7 @@ struct convex_hull
                 facet_set & neighbours_ = i->second.neighbours_;
                 for (auto j = fbeg; j != fend; ++j) {
                     if (j != i) {
-                        neighbours_.emplace_hint(neighbours_.end(), j->first);
+                        neighbours_.insert(j->first);
                     }
                 }
             }
@@ -513,7 +513,7 @@ struct convex_hull
             for (size_type const n : newfacets_) {
                 rank(partition(facets_.at(n), outside_set_), n);
             }
-            internal_set_.splice(internal_set_.cend(), outside_set_);
+            internal_set_.splice(internal_set_.end(), outside_set_);
         }
         ordered_.clear();
     }
