@@ -63,6 +63,10 @@ int main()
         return EXIT_FAILURE;
     }
     ofs_ << "reset" << std::endl;
+    //ofs_ << "set view equal xyz; set xyplane at 0.5;" << std::endl;
+    ofs_ << "set arrow 1 from 0,0,0 to 1,0,0; set arrow 1 head filled;" << std::endl;
+    ofs_ << "set arrow 2 from 0,0,0 to 0,1,0; set arrow 2 head filled;" << std::endl;
+    ofs_ << "set arrow 3 from 0,0,0 to 0,0,1; set arrow 3 head filled;" << std::endl;
     ofs_ << "set autoscale" << std::endl;
     switch (dim_) {
     case 1 : {
@@ -96,10 +100,13 @@ int main()
             convex_hull_.create_convex_hull();
         }
         steady_clock::time_point const end = steady_clock::now();
-        std::cout << "time = " << duration_cast< microseconds >(end - start).count() << std::endl;
+        std::cout << "time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
     }
     auto const & facets_ = convex_hull_.facets_;
     std::cout << "number of facets created = " << facets_.size() << std::endl;
+    std::cout << "inside points: ";
+    std::copy(convex_hull_.internal_set_.cbegin(), convex_hull_.internal_set_.cend(), std::ostream_iterator< size_type >(std::cout, " "));
+    std::cout << std::endl;
     for (auto const & f_ : facets_) {
         auto const & facet_ = f_.second;
         for (auto const & v : facet_.vertices_) {
