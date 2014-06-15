@@ -21,38 +21,20 @@ struct convex_hull
 
     using point_type = typename points_type::value_type;
     using G = typename point_type::value_type;
-    using normal_type = std::vector< G >;
-    using point_list = std::list< size_type >;
-    using point_set = std::set< size_type >;
-    using point_array = std::vector< size_type >;
-    using point_deque = std::deque< size_type >;
 
-    size_type const dimension_;
-    points_type const & points_;
-    point_list internal_set_;
-
-    convex_hull(size_type const _dimension, points_type const & _points)
-        : dimension_(_dimension)
-        , points_(_points)
-        , matrix_(dimension_ + 1)
-        , shadow_matrix_(dimension_ + 1)
-        , minor_(dimension_)
-    {
-        for (size_type i = 0; i < dimension_; ++i) {
-            matrix_[i].resize(dimension_ + 1);
-            shadow_matrix_[i].resize(dimension_ + 1);
-            minor_[i].resize(dimension_);
-        }
-        matrix_.back().resize(dimension_ + 1);
-        shadow_matrix_.back().resize(dimension_ + 1);
-    }
-
-private :
+private : // math (simple functions, matrices, etc)
 
     G
     abs(G const & _x) const
     {
         return (_x < G(0)) ? -_x : _x;
+    }
+
+    G
+    sqrtsign(G const & _x) const
+    {
+        using std::sqrt;
+        return (_x < G(0)) ? -sqrt(-_x) : sqrt(_x);
     }
 
     using row_type = std::valarray< G >;
@@ -61,6 +43,48 @@ private :
     matrix_type matrix_;
     matrix_type shadow_matrix_; // storage for source matrix
     matrix_type minor_;
+
+    void
+    vectorize(size_type const _rows)
+    {
+        row_type const & origin_ = matrix_.back();
+        for (size_type row = 0; row < _rows; ++row) {
+            matrix_[row] -= origin_;
+        }
+    }
+
+    void
+    transpose()
+    { // to cheaper filling columns with ones
+        for (size_type row = 0; row < dimension_; ++row) {
+            row_type & row_ = shadow_matrix_[row];
+            for (size_type col = 1 + row; col < dimension_; ++col) {
+                using std::swap;
+                swap(shadow_matrix_[col][row], row_[col]);
+            }
+        }
+    }
+
+    void
+    restore_matrix()
+    {
+        for (size_type row = 0; row < dimension_; ++row) {
+            std::copy_n(std::begin(shadow_matrix_[row]), dimension_, std::begin(matrix_[row]));
+        }
+    }
+
+    void
+    restore_matrix(size_type const _identity)
+    {
+        for (size_type row = 0; row < dimension_; ++row) {
+            auto const to = std::begin(matrix_[row]);
+            if (row == _identity) {
+                std::fill_n(to, dimension_, G(1));
+            } else {
+                std::copy_n(std::begin(shadow_matrix_[row]), dimension_, to);
+            }
+        }
+    }
 
     G
     det(size_type const _size) // based on LU factorization
@@ -109,40 +133,33 @@ private :
         return det_;
     }
 
-    void
-    transpose()
-    { // to cheaper filling with ones
-        for (size_type row = 0; row < dimension_; ++row) {
-            row_type & row_ = shadow_matrix_[row];
-            for (size_type col = 1 + row; col < dimension_; ++col) {
-                using std::swap;
-                swap(shadow_matrix_[col][row], row_[col]);
-            }
-        }
-    }
-
-    void
-    restore_matrix()
-    {
-        for (size_type row = 0; row < dimension_; ++row) {
-            std::copy_n(std::begin(shadow_matrix_[row]), dimension_, std::begin(matrix_[row]));
-        }
-    }
-
-    void
-    restore_matrix(size_type const _identity)
-    {
-        for (size_type row = 0; row < dimension_; ++row) {
-            auto const to = std::begin(matrix_[row]);
-            if (row == _identity) {
-                std::fill_n(to, dimension_, G(1));
-            } else {
-                std::copy_n(std::begin(shadow_matrix_[row]), dimension_, to);
-            }
-        }
-    }
-
 public :
+
+    using normal_type = std::vector< G >;
+    using point_list = std::list< size_type >;
+    using point_set = std::set< size_type >;
+    using point_array = std::vector< size_type >;
+    using point_deque = std::deque< size_type >;
+
+    size_type const dimension_;
+    points_type const & points_;
+    point_list internal_set_;
+
+    convex_hull(size_type const _dimension, points_type const & _points)
+        : dimension_(_dimension)
+        , points_(_points)
+        , matrix_(_dimension + 1)
+        , shadow_matrix_(_dimension + 1)
+        , minor_(_dimension)
+    {
+        for (size_type i = 0; i < dimension_; ++i) {
+            matrix_[i].resize(dimension_ + 1);
+            shadow_matrix_[i].resize(dimension_ + 1);
+            minor_[i].resize(dimension_);
+        }
+        matrix_.back().resize(dimension_ + 1);
+        shadow_matrix_.back().resize(dimension_ + 1);
+    }
 
     struct facet;
 
@@ -178,6 +195,18 @@ public :
             , neighbours_({_neighbour})
         { ; }
 
+        G
+        distance(point_type const & _point) const
+        {
+            return std::inner_product(normal_.cbegin(), normal_.cend(), std::begin(_point), D);
+        }
+
+        G
+        cos_dihedral_angle(facet const & _other) const // for faces merging in the future
+        {
+            return std::inner_product(normal_.cbegin(), normal_.cend(), _other.normal_.cbegin(), G(0));
+        }
+
         bool
         rank(G const & _nearer, G const & _further) const
         {
@@ -198,25 +227,13 @@ public :
             }
         }
 
-        G
-        distance(point_type const & _point) const
-        {
-            return std::inner_product(normal_.cbegin(), normal_.cend(), std::begin(_point), D);
-        }
-
-        G
-        cos_dihedral_angle(facet const & _other) const // for faces merging in the future
-        {
-            return std::inner_product(normal_.cbegin(), normal_.cend(), _other.normal_.cbegin(), G(0));
-        }
-
     };
 
     using facets_map = std::map< size_type, facet >;
 
     facets_map facets_;
 
-private :
+private : // geometry and basic operation on geometric primitives
 
     using facet_iterator = typename facets_map::iterator;
     using facets_type = std::deque< size_type >;
@@ -271,24 +288,20 @@ private :
     G
     orientation(vertices const & _vertices, point_type const & _apex)
     {
-        size_type const size_ = _vertices.size(); // dimensionality of the subspace of interest
-        assert(!(_apex.size() < size_));
+        size_type const size_ = _vertices.size();
         auto v_ = _vertices.cbegin();
         for (size_type i = 0; i < size_; ++i) {
             assert(v_ != _vertices.cend());
             point_type const & vertex_ = points_[*v_];
+            row_type & row_ = matrix_[i];
+            std::copy_n(std::begin(vertex_), size_, std::begin(row_));
+            row_[size_] = G(1);
             ++v_;
-            assert(!(vertex_.size() < size_));
-            for (size_type j = 0; j < size_; ++j) {
-                matrix_[i][j] = vertex_[j];
-            }
-            matrix_[i][size_] = G(1);
         }
-        for (size_type j = 0; j < size_; ++j) {
-            matrix_[size_][j] = _apex[j];
-        }
-        matrix_[size_][size_] = G(1);
-        return det(size_ + 1); // size_-dimensional oriented volume of parallelotope based on (_vertices + _apex) simplex
+        auto const origin = std::begin(matrix_[size_]);
+        std::copy_n(std::begin(_apex), size_, origin);
+        origin[size_] = G(1);
+        return det(size_ + 1);
     }
 
     template< typename vertices >
@@ -431,9 +444,7 @@ private :
         }
     }
 
-public :
-
-    bool
+    size_type
     create_simplex()
     {
         {
@@ -447,8 +458,7 @@ public :
         for (size_type i = 0; i < dimension_; ++i) {
             G const orientation_ = steal_best(internal_set_, vertices_);
             if (!(G(0) < abs(orientation_))) {
-                //throw bad_geometry("can't find linearly independent point");
-                return false;
+                return 1 + i; // can't find linearly independent point
             }
         }
         assert(vertices_.size() == 1 + dimension_); // (d + 1) vertices defining a simplex
@@ -476,14 +486,17 @@ public :
                 }
             }
         }
-        return true;
+        return dimension_;
     }
 
-    bool
+public : // quick hull algorithm
+
+    size_type
     create_convex_hull()
     {
-        if (!create_simplex()) {
-            return false;
+        size_type const dim_ = create_simplex();
+        if (dim_ != dimension_) {
+            return dim_;
         }
         size_type facet_key = facets_.size(); // unique key for facets_
         assert(facet_key == dimension_ + 1);
@@ -561,7 +574,7 @@ public :
             internal_set_.splice(internal_set_.end(), outside_set_);
         }
         ordered_.clear();
-        return true;
+        return dimension_;
     }
 
 };
