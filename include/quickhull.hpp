@@ -47,9 +47,9 @@ private : // math (simple functions, matrices, etc)
     void
     vectorize(size_type const _rows)
     {
-        row_type const & origin_ = matrix_.back();
+        row_type const & origin_ = shadow_matrix_.back();
         for (size_type row = 0; row < _rows; ++row) {
-            matrix_[row] -= origin_;
+            shadow_matrix_[row] -= origin_;
         }
     }
 
@@ -82,6 +82,22 @@ private : // math (simple functions, matrices, etc)
                 std::fill_n(to, dimension_, G(1));
             } else {
                 std::copy_n(std::begin(shadow_matrix_[row]), dimension_, to);
+            }
+        }
+    }
+
+    void
+    square_matrix(size_type const _size)
+    {
+        assert(_size < dimension_);
+        for (size_type row = 0; row < _size; ++row) {
+            row_type & lhs_ = matrix_[row];
+            row_type const & row_ = shadow_matrix_[row];
+            auto const rbeg = std::begin(row_);
+            auto const rend = std::end(row_);
+            for (size_type col = 0; col < _size; ++col) {
+                row_type const & col_ = shadow_matrix_[col];
+                lhs_[col] = std::inner_product(rbeg, rend, std::begin(col_), G(0));
             }
         }
     }
@@ -152,10 +168,10 @@ public :
         , shadow_matrix_(_dimension + 1)
         , minor_(_dimension)
     {
-        for (size_type i = 0; i < dimension_; ++i) {
-            matrix_[i].resize(dimension_ + 1);
-            shadow_matrix_[i].resize(dimension_ + 1);
-            minor_[i].resize(dimension_);
+        for (size_type row = 0; row < dimension_; ++row) {
+            matrix_[row].resize(dimension_ + 1);
+            shadow_matrix_[row].resize(dimension_ + 1);
+            minor_[row].resize(dimension_);
         }
         matrix_.back().resize(dimension_ + 1);
         shadow_matrix_.back().resize(dimension_ + 1);
@@ -288,20 +304,35 @@ private : // geometry and basic operation on geometric primitives
     G
     orientation(vertices const & _vertices, point_type const & _apex)
     {
-        size_type const size_ = _vertices.size();
-        auto v_ = _vertices.cbegin();
-        for (size_type i = 0; i < size_; ++i) {
-            assert(v_ != _vertices.cend());
-            point_type const & vertex_ = points_[*v_];
-            row_type & row_ = matrix_[i];
-            std::copy_n(std::begin(vertex_), size_, std::begin(row_));
-            row_[size_] = G(1);
-            ++v_;
+        size_type const rows_ = _vertices.size();
+        assert(!(dimension_ < rows_));
+        auto vertex = _vertices.cbegin();
+        if (rows_ == dimension_) { // dimension_-dimensional oriented hypervolume
+            for (size_type row = 0; row < dimension_; ++row) {
+                assert(vertex != _vertices.cend());
+                row_type & row_ = matrix_[row];
+                std::copy_n(std::begin(points_[*vertex]), dimension_, std::begin(row_));
+                row_[dimension_] = G(1);
+                ++vertex;
+            }
+            auto const origin = std::begin(matrix_.back());
+            std::copy_n(std::begin(_apex), dimension_, origin);
+            origin[dimension_] = G(1);
+            return det(dimension_ + 1);
+        } else { // rows_-dimensional hypervolumes for rows_-dimensional subspaces
+            for (size_type row = 0; row < rows_; ++row) {
+                assert(vertex != _vertices.cend());
+                row_type & row_ = shadow_matrix_[row];
+                std::copy_n(std::begin(points_[*vertex]), dimension_, std::begin(row_));
+                ++vertex;
+            }
+            auto const origin = std::begin(shadow_matrix_.back());
+            std::copy_n(std::begin(_apex), dimension_, origin);
+            vectorize(rows_);
+            square_matrix(rows_);
+            using std::sqrt;
+            return sqrt(det(rows_));
         }
-        auto const origin = std::begin(matrix_[size_]);
-        std::copy_n(std::begin(_apex), size_, origin);
-        origin[size_] = G(1);
-        return det(size_ + 1);
     }
 
     template< typename vertices >
@@ -444,7 +475,9 @@ private : // geometry and basic operation on geometric primitives
         }
     }
 
-    size_type
+public : // quick hull algorithm
+
+    bool
     create_simplex()
     {
         {
@@ -455,14 +488,12 @@ private : // geometry and basic operation on geometric primitives
         }
         point_list vertices_;
         vertices_.splice(vertices_.end(), internal_set_, internal_set_.begin());
-        for (size_type i = 0; i < dimension_; ++i) {
+        for (size_type i = 1; i < dimension_; ++i) {
             G const orientation_ = steal_best(internal_set_, vertices_);
-            if (!(G(0) < abs(orientation_))) {
-                return 1 + i; // can't find linearly independent point
+            if (!(G(0) < orientation_)) {
+                return false; // can't find linearly independent point
             }
         }
-        assert(vertices_.size() == 1 + dimension_); // (d + 1) vertices defining a simplex
-        internal_set_.splice(internal_set_.end(), vertices_, vertices_.begin());
         assert(vertices_.size() == dimension_); // d vertices defining a facet
         bool outward_ = !(G(0) < steal_best(internal_set_, vertices_)); // is top oriented?
         auto const vbeg = vertices_.cbegin();
@@ -486,18 +517,15 @@ private : // geometry and basic operation on geometric primitives
                 }
             }
         }
-        return dimension_;
+        return true;
     }
 
-public : // quick hull algorithm
-
-    size_type
+    bool
     create_convex_hull()
-    {
-        size_type const dim_ = create_simplex();
-        if (dim_ != dimension_) {
-            return dim_;
-        }
+    {/*
+        if (!create_simplex()) {
+            return false;
+        }*/
         size_type facet_key = facets_.size(); // unique key for facets_
         assert(facet_key == dimension_ + 1);
         point_list outside_set_;
@@ -574,7 +602,7 @@ public : // quick hull algorithm
             internal_set_.splice(internal_set_.end(), outside_set_);
         }
         ordered_.clear();
-        return dimension_;
+        return true;
     }
 
 };

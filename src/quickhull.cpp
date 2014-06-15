@@ -56,6 +56,52 @@ int main()
         std::cerr << "input file format error" << std::endl;
         return EXIT_FAILURE;
     }
+    std::cout.rdbuf()->pubsetbuf(nullptr, 0);
+    std::cout << "D = " << dim_ << std::endl;
+    std::cout << "N = " << count_ << std::endl;
+    using H = convex_hull< points_type >;
+    H convex_hull_(dim_, points_);
+    {
+        using std::chrono::duration_cast;
+        using std::chrono::microseconds;
+        using std::chrono::steady_clock;
+        {
+            steady_clock::time_point const start = steady_clock::now();
+            bool const success = convex_hull_.create_simplex();
+            steady_clock::time_point const end = steady_clock::now();
+            std::cerr << "simplex time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
+            if (!success) {
+                std::cerr << "cant create a simplex" << std::endl;
+                return EXIT_FAILURE;
+            }
+        }
+        {
+            steady_clock::time_point const start = steady_clock::now();
+            bool const success = convex_hull_.create_convex_hull();
+            steady_clock::time_point const end = steady_clock::now();
+            std::cerr << "qh time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
+            if (!success) {
+                std::cerr << "cant create a simplex" << std::endl;
+                return EXIT_FAILURE;
+            }
+        }
+    }
+    auto const & facets_ = convex_hull_.facets_;
+    std::cerr << "number of facets created = " << facets_.size() << std::endl;
+    std::cout << "inside points: ";
+    std::copy(convex_hull_.internal_set_.cbegin(), convex_hull_.internal_set_.cend(), std::ostream_iterator< size_type >(std::cout, " "));
+    std::cout << std::endl;
+    for (auto const & f_ : facets_) {
+        auto const & facet_ = f_.second;
+        for (auto const & v : facet_.vertices_) {
+            std::cout << v << ' ';
+        }
+        std::cout << ' ';
+        for (auto const & c : facet_.coplanar_) {
+            std::cout << c << ' ';
+        }
+        std::cout << std::endl;
+    }
     std::ofstream ofs_;
     ofs_.open("script.txt"); // gnuplot> load 'script.txt'
     if (!ofs_.is_open()) {
@@ -85,38 +131,6 @@ int main()
         std::cerr << "dimensionality value (" << dim_ << ") is out of supported range" << std::endl;
         return EXIT_FAILURE;
     }
-    }
-    std::cout.rdbuf()->pubsetbuf(nullptr, 0);
-    std::cout << "D = " << dim_ << std::endl;
-    std::cout << "N = " << count_ << std::endl;
-    using H = convex_hull< points_type >;
-    H convex_hull_(dim_, points_);
-    {
-        using std::chrono::duration_cast;
-        using std::chrono::microseconds;
-        using std::chrono::steady_clock;
-        steady_clock::time_point const start = steady_clock::now();
-        {
-            convex_hull_.create_convex_hull();
-        }
-        steady_clock::time_point const end = steady_clock::now();
-        std::cout << "time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
-    }
-    auto const & facets_ = convex_hull_.facets_;
-    std::cout << "number of facets created = " << facets_.size() << std::endl;
-    std::cout << "inside points: ";
-    std::copy(convex_hull_.internal_set_.cbegin(), convex_hull_.internal_set_.cend(), std::ostream_iterator< size_type >(std::cout, " "));
-    std::cout << std::endl;
-    for (auto const & f_ : facets_) {
-        auto const & facet_ = f_.second;
-        for (auto const & v : facet_.vertices_) {
-            std::cout << v << ' ';
-        }
-        std::cout << ' ';
-        for (auto const & c : facet_.coplanar_) {
-            std::cout << c << ' ';
-        }
-        std::cout << std::endl;
     }
     ofs_ << " '-' with points notitle, '-' with labels offset 0,char 1 notitle";
     for (std::size_t i = 0; i < facets_.size(); ++i) {
