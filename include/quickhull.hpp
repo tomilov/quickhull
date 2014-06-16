@@ -686,11 +686,6 @@ public : // quick hull algorithm
             _out << "'-' with points notitle pointtype 1 linecolor rgb 'purple', ";
             _out << "'-' with labels notitle offset character 0, character 0.5 font 'Times,6'";
             _out << ";\n";
-            {
-                facet const & facet_ = facets_.at(_furthest);
-                point_type const & apex_ = points_[facet_.outside_set_.front()];
-                std::copy(std::begin(apex_), std::end(apex_), std::ostream_iterator< G >(_out, " "));
-            }
             for (auto const & f : facets_) {
                 point_array const & vertices_ = f.second.vertices_;
                 for (size_type const v : vertices_) {
@@ -700,6 +695,11 @@ public : // quick hull algorithm
                 }
                 point_type const & point_ = points_[vertices_.front()];
                 std::copy(std::begin(point_), std::end(point_), std::ostream_iterator< G >(_out, " "));
+                _out << "\ne\n";
+            }
+            {
+                point_type const & apex_ = points_[facets_.at(_furthest).outside_set_.front()];
+                std::copy(std::begin(apex_), std::end(apex_), std::ostream_iterator< G >(_out, " "));
                 _out << "\ne\n";
             }
             for (point_type const & point_ : points_) {
@@ -723,35 +723,15 @@ public : // quick hull algorithm
     {
         _out << "clear\n";
         if (!facets_.empty()) {
-            _out << "splot '-' with lines notitle";
-            size_type const size_ = facets_.size();
-            for (size_type i = 1; i < size_; ++i) {
-                _out << ", '-' with lines notitle linetype 1 ";
-                switch (i % 4) {
-                case 0 : {
-                    _out << "linecolor rgb 'red'";
-                    break;
-                }
-                case 1 : {
-                    _out << "linecolor rgb 'green'";
-                    break;
-                }
-                case 2 : {
-                    _out << "linecolor rgb 'blue'";
-                    break;
-                }
-                case 3 : {
-                    _out << "linecolor rgb 'purple'";
-                    break;
-                }
-                default : {
-                    break;
-                }
-                }
-
+            _out << "splot ";
+            //size_type const size_ = facets_.size();
+            auto const fbeg = facets_.cbegin();
+            auto const fend = facets_.cend();
+            for (auto f_ = fbeg; f_ != fend; ++f_) {
+                _out << "'-' with lines notitle linetype 1 linecolor rgb 'black', ";
             }
-            _out << ", '-' with points pointtype 1";
-            _out << ", '-' with labels offset character 0, character 1 font 'Times,6'";
+            _out << "'-' with points notitle pointtype 1 linecolor rgb 'purple', ";
+            _out << "'-' with labels notitle offset character 0, character 0.5 font 'Times,6'";
             _out << ";\n";
             for (auto const & f : facets_) {
                 point_array const & vertices_ = f.second.vertices_;

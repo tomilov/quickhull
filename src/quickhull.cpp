@@ -117,9 +117,9 @@ main(int argc, char * argv[])
     }
     ofs_ << "reset" << std::endl;
     //ofs_ << "set view equal xyz; set xyplane at 0.5;" << std::endl;
-    ofs_ << "set arrow 1 from 0,0,0 to 0.5,0,0; set arrow 1 head filled;" << std::endl;
-    ofs_ << "set arrow 2 from 0,0,0 to 0,0.5,0; set arrow 2 head filled;" << std::endl;
-    ofs_ << "set arrow 3 from 0,0,0 to 0,0,0.5; set arrow 3 head filled;" << std::endl;
+    //ofs_ << "set arrow 1 from 0,0,0 to 0.5,0,0; set arrow 1 head filled;" << std::endl;
+    //ofs_ << "set arrow 2 from 0,0,0 to 0,0.5,0; set arrow 2 head filled;" << std::endl;
+    //ofs_ << "set arrow 3 from 0,0,0 to 0,0,0.5; set arrow 3 head filled;" << std::endl;
     ofs_ << "set autoscale" << std::endl;
     switch (dim_) {
     case 1 : {
