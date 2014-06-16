@@ -15,12 +15,17 @@
 #include <cstdlib>
 #include <cassert>
 
-int main()
+int
+main(int argc, char * argv[])
 {
+    if (argc < 2) {
+        std::cerr << "error: argc == "  << argc << std::endl;
+        return EXIT_FAILURE;
+    }
     using size_type = std::size_t;
 
     std::ifstream ifs_;
-    ifs_.open("points.txt"); // rbox n D3 s 100 > points.txt
+    ifs_.open(argv[1]); // rbox n D3 s 100 > points.txt
     if (!ifs_.is_open()) {
         std::cerr << "file is not open" << std::endl;
         return EXIT_FAILURE;
@@ -69,7 +74,7 @@ int main()
             steady_clock::time_point const start = steady_clock::now();
             bool const success = convex_hull_.create_simplex();
             steady_clock::time_point const end = steady_clock::now();
-            std::cerr << "simplex time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
+            std::cout << "simplex time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
             if (!success) {
                 std::cerr << "cant create a simplex" << std::endl;
                 return EXIT_FAILURE;
@@ -79,7 +84,7 @@ int main()
             steady_clock::time_point const start = steady_clock::now();
             bool const success = convex_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
-            std::cerr << "qh time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
+            std::cout << "qh time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
             if (!success) {
                 std::cerr << "cant create a simplex" << std::endl;
                 return EXIT_FAILURE;
@@ -87,7 +92,8 @@ int main()
         }
     }
     auto const & facets_ = convex_hull_.facets_;
-    std::cerr << "number of facets created = " << facets_.size() << std::endl;
+    std::cout << "number of facets created = " << facets_.size() << std::endl;
+#if 0
     std::cout << "inside points: ";
     std::copy(convex_hull_.internal_set_.cbegin(), convex_hull_.internal_set_.cend(), std::ostream_iterator< size_type >(std::cout, " "));
     std::cout << std::endl;
@@ -102,6 +108,7 @@ int main()
         }
         std::cout << std::endl;
     }
+#endif
     std::ofstream ofs_;
     ofs_.open("script.txt"); // gnuplot> load 'script.txt'
     if (!ofs_.is_open()) {
@@ -110,9 +117,9 @@ int main()
     }
     ofs_ << "reset" << std::endl;
     //ofs_ << "set view equal xyz; set xyplane at 0.5;" << std::endl;
-    ofs_ << "set arrow 1 from 0,0,0 to 1,0,0; set arrow 1 head filled;" << std::endl;
-    ofs_ << "set arrow 2 from 0,0,0 to 0,1,0; set arrow 2 head filled;" << std::endl;
-    ofs_ << "set arrow 3 from 0,0,0 to 0,0,1; set arrow 3 head filled;" << std::endl;
+    ofs_ << "set arrow 1 from 0,0,0 to 0.5,0,0; set arrow 1 head filled;" << std::endl;
+    ofs_ << "set arrow 2 from 0,0,0 to 0,0.5,0; set arrow 2 head filled;" << std::endl;
+    ofs_ << "set arrow 3 from 0,0,0 to 0,0,0.5; set arrow 3 head filled;" << std::endl;
     ofs_ << "set autoscale" << std::endl;
     switch (dim_) {
     case 1 : {
