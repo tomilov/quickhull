@@ -44,15 +44,6 @@ private : // math (simple functions, matrices, etc)
     matrix_type minor_;
 
     void
-    vectorize(size_type const _rows)
-    {
-        row_type const & origin_ = shadow_matrix_.back();
-        for (size_type row = 0; row < _rows; ++row) {
-            shadow_matrix_[row] -= origin_;
-        }
-    }
-
-    void
     transpose()
     { // to cheaper filling columns with ones
         for (size_type row = 0; row < dimension_; ++row) {
@@ -68,17 +59,17 @@ private : // math (simple functions, matrices, etc)
     restore_matrix()
     {
         for (size_type row = 0; row < dimension_; ++row) {
-            std::copy_n(std::begin(shadow_matrix_[row]), dimension_, std::begin(matrix_[row]));
+            matrix_[row] = shadow_matrix_[row];
         }
     }
 
     void
-    restore_matrix(size_type const _identity)
+    restore_matrix(size_type const _identity) // load matrix from storage with replacing of _identity column with ones
     {
         for (size_type row = 0; row < dimension_; ++row) {
             row_type & to_ = matrix_[row];
             if (row == _identity) {
-                std::fill_n(std::begin(to_), dimension_, G(1));
+                to_ = G(1);
             } else {
                 to_ = shadow_matrix_[row];
             }
@@ -86,7 +77,7 @@ private : // math (simple functions, matrices, etc)
     }
 
     void
-    square_matrix(size_type const _size)
+    square_matrix(size_type const _size) // matrix_ = shadow_matrix_ * transposed shadow_matrix_
     {
         assert(_size < dimension_);
         for (size_type row = 0; row < _size; ++row) {
@@ -101,7 +92,7 @@ private : // math (simple functions, matrices, etc)
     }
 
     G
-    det(size_type const _size) // based on LU factorization
+    det(size_type const _size) // based on LU factorization part of LUP decomposition algorithm
     {
         G det_(1);
         for (size_type i = 0; i < _size; ++i) {
@@ -120,7 +111,7 @@ private : // math (simple functions, matrices, etc)
             }
             row_type & ri_ = matrix_[i];
             if (pivot_ != i) {
-                det_ = -det_;
+                det_ = -det_; // each permutation flips sign of det
                 ri_.swap(matrix_[pivot_]);
             }
             G & dia_ = ri_[i];
@@ -160,15 +151,16 @@ public :
 
     convex_hull(size_type const _dimension, points_type const & _points)
         : dimension_(_dimension)
-        , matrix_(_dimension + 1)
-        , shadow_matrix_(_dimension + 1)
-        , minor_(_dimension)
+        , matrix_(_dimension)
+        , shadow_matrix_(_dimension)
+        , minor_(_dimension - 1)
         , points_(_points)
     {
-        for (size_type row = 0; row < dimension_; ++row) {
+        size_type const minor_size_ = dimension_ - 1;
+        for (size_type row = 0; row < minor_size_; ++row) {
             matrix_[row].resize(dimension_);
             shadow_matrix_[row].resize(dimension_);
-            minor_[row].resize(dimension_);
+            minor_[row].resize(minor_size_);
         }
         matrix_.back().resize(dimension_);
         shadow_matrix_.back().resize(dimension_);
@@ -255,7 +247,7 @@ public :
         std::ostream &
         print_info(std::ostream & _out) const
         {
-            _out << '[' << (outward_ ? "up" : "down") << " p: ";
+            _out << '[' << (outward_ ? "up" : "dn") << " p: ";
             for (size_type const v : vertices_) {
                 _out << v << ';';
             }
@@ -285,17 +277,10 @@ public :
 
     facet_map facets_;
 
-#ifdef _DEBUG
-    std::ostream &
-    pause(std::ostream & _out, std::string const & _text = "") const
-    {
-        return _out << "pause -1 '" << _text << "'\n";
-    }
-
 private : // geometry and basic operation on geometric primitives
 
     using facet_iterator = typename facet_map::iterator;
-    using facets_type = std::deque< size_type >;
+    using facets_type = std::vector< size_type >;
     using vertices_sets_type = std::map< size_type, point_set >;
 
     vertices_sets_type ordered_; // ordered, but not oriented vertices of facets
@@ -338,29 +323,31 @@ private : // geometry and basic operation on geometric primitives
     template< typename vertices >
     G
     orientation(vertices const & _vertices, point_type const & _apex)
-    {
+    { // rows_-dimensional oriented hypervolume of corresponding parallelotope, strictly positive value for subspaces
         size_type const rows_ = _vertices.size();
         assert(!(dimension_ < rows_));
+        row_type & origin_ = shadow_matrix_.back();
+        std::copy_n(std::begin(_apex), dimension_, std::begin(origin_));
         auto vertex = _vertices.cbegin();
-        if (rows_ == dimension_) { // dimension_-dimensional oriented hypervolume
+        if (rows_ == dimension_) {
             for (size_type row = 0; row < dimension_; ++row) {
                 assert(vertex != _vertices.cend());
                 std::copy_n(std::begin(points_[*vertex]), dimension_, std::begin(matrix_[row]));
                 ++vertex;
             }
-            auto const origin = std::begin(matrix_.back());
-            std::copy_n(std::begin(_apex), dimension_, origin);
+            for (size_type row = 0; row < dimension_; ++row) { // vectorize
+                matrix_[row] -= origin_;
+            }
             return det(dimension_);
-        } else { // rows_-dimensional hypervolumes for rows_-dimensional subspaces
+        } else {
             for (size_type row = 0; row < rows_; ++row) {
                 assert(vertex != _vertices.cend());
-                row_type & row_ = shadow_matrix_[row];
-                std::copy_n(std::begin(points_[*vertex]), dimension_, std::begin(row_));
+                std::copy_n(std::begin(points_[*vertex]), dimension_, std::begin(shadow_matrix_[row]));
                 ++vertex;
             }
-            auto const origin = std::begin(shadow_matrix_.back());
-            std::copy_n(std::begin(_apex), dimension_, origin);
-            vectorize(rows_);
+            for (size_type row = 0; row < rows_; ++row) { // vectorize
+                shadow_matrix_[row] -= origin_;
+            }
             square_matrix(rows_);
             using std::sqrt;
             return sqrt(det(rows_));
@@ -388,7 +375,7 @@ private : // geometry and basic operation on geometric primitives
                 furthest = it;
             }
         }
-        _to.splice(_to.end(), _from, furthest);
+        _to.splice(_to.cend(), _from, furthest);
         return orientation_;
     }
 
@@ -457,8 +444,8 @@ private : // geometry and basic operation on geometric primitives
     void
     adjacency(facets_type const & _newfacets)
     {
-        auto const nend = _newfacets.end();
-        for (auto first = _newfacets.begin(); first != nend; ++first) {
+        auto const nend = _newfacets.cend();
+        for (auto first = _newfacets.cbegin(); first != nend; ++first) {
             size_type const f = *first;
             point_set & first_ = ordered_.at(f);
             auto const lbeg = first_.cbegin();
@@ -507,7 +494,7 @@ private : // geometry and basic operation on geometric primitives
         }
     }
 
-public : // quick hull algorithm
+public : // largest possible simplex heuristic, convex hull algorithm
 
     bool
     create_simplex()
@@ -519,13 +506,15 @@ public : // quick hull algorithm
             }
         }
         point_list vertices_;
-        vertices_.splice(vertices_.end(), internal_set_, internal_set_.begin());
-        for (size_type i = 1; i < dimension_; ++i) {
+        vertices_.splice(vertices_.cend(), internal_set_, internal_set_.begin());
+        for (size_type i = 0; i < dimension_; ++i) {
             G const orientation_ = steal_best(internal_set_, vertices_);
-            if (!(G(0) < orientation_)) {
+            if (!(G(0) < abs(orientation_))) {
                 return false; // can't find linearly independent point
             }
         }
+        assert(vertices_.size() == dimension_ + 1); // (d + 1) vertices defining a d-simplex
+        internal_set_.splice(internal_set_.cend(), vertices_, vertices_.begin());
         assert(vertices_.size() == dimension_); // d vertices defining a facet
         bool outward_ = !(G(0) < steal_best(internal_set_, vertices_)); // is top oriented?
         auto const vbeg = vertices_.cbegin();
@@ -566,31 +555,34 @@ public : // quick hull algorithm
         size_type facet_key = facets_.size(); // unique key for facets_
         assert(facet_key == dimension_ + 1);
         point_list outside_set_;
+        facet_set visited_;
+        facet_set viewable_;
+        facet_set visible_facets_;
+        facets_type newfacets_;
         for (size_type furthest = get_furthest(facet_key); furthest != facet_key; furthest = get_furthest(facet_key)) {
             facet & facet_ = facets_.at(furthest);
             size_type const apex = facet_.outside_set_.front();
             point_type const & apex_ = points_[apex];
-            facet_set visible_facets_{furthest};
+            visible_facets_ = {furthest};
             { // find visible facets
-                facet_set pool_ = facet_.neighbours_;
-                facet_set visited_{furthest};
-                while (!pool_.empty()) {
-                    auto const first = pool_.begin();
+                visited_ = {furthest};
+                viewable_ = facet_.neighbours_;
+                while (!viewable_.empty()) {
+                    auto const first = viewable_.begin();
                     size_type const f = *first;
                     facet const & watchable_ = facets_.at(f);
                     if (watchable_.above(apex_)) {
                         visible_facets_.insert(f);
                         std::set_difference(watchable_.neighbours_.cbegin(), watchable_.neighbours_.cend(),
                                             visited_.cbegin(), visited_.cend(),
-                                            std::inserter(pool_, pool_.end()));
+                                            std::inserter(viewable_, viewable_.end()));
                     }
                     visited_.insert(f);
-                    pool_.erase(first);
+                    viewable_.erase(first);
                 }
             }
             // the boundary of visible facets is the set of horizon ridges
             // Each ridge signifies the adjacency of two facets.
-            facets_type newfacets_;
             auto const vfend = visible_facets_.end();
             for (size_type const v : visible_facets_) {
                 facet const & visible_facet_ = facets_.at(v);
@@ -642,7 +634,8 @@ public : // quick hull algorithm
             for (size_type const n : newfacets_) {
                 rank(partition(facets_.at(n), outside_set_), n);
             }
-            internal_set_.splice(internal_set_.end(), outside_set_);
+            newfacets_.clear();
+            internal_set_.splice(internal_set_.cend(), outside_set_);
 #ifdef _DEBUG
             show_scene(std::cerr);
             print_info(std::cerr);
@@ -656,6 +649,7 @@ public : // quick hull algorithm
         return true;
     }
 
+#ifdef _DEBUG
     std::ostream &
     show_scene(std::ostream & _out, facets_type const & _newfacets, facet_set const & _visible_facets, size_type const _furthest) const
     {
@@ -731,7 +725,9 @@ public : // quick hull algorithm
                 _out << "'-' with lines notitle linetype 1 linecolor rgb 'black', ";
             }
             _out << "'-' with points notitle pointtype 1 linecolor rgb 'purple', ";
-            _out << "'-' with labels notitle offset character 0, character 0.5 font 'Times,6'";
+            _out << "'-' with labels notitle offset character 0, character 0.5 font 'Times,6', ";
+            _out << "'-' with vectors head filled linetype 1 linecolor rgb 'green', ";
+            _out << "'-' with points pointtype 7 linecolor rgb 'red'";
             _out << ";\n";
             for (auto const & f : facets_) {
                 point_array const & vertices_ = f.second.vertices_;
@@ -756,6 +752,37 @@ public : // quick hull algorithm
                 _out << p << '\n';
             }
             _out << "e\n";
+            std::vector< point_type > centres_(facets_.size());
+            auto const cbeg = centres_.begin();
+            auto const cend = centres_.end();
+            auto cit = cbeg;
+            for (auto const & f : facets_) {
+                facet const & facet_ = f.second;
+                assert(cit != cend);
+                point_type & centre_ = *cit++;
+                centre_.resize(dimension_, G(0));
+                for (size_type const v : facet_.vertices_) {
+                    point_type const & vertex_ = points_[v];
+                    for (size_type i = 0; i < dimension_; ++i) {
+                        centre_[i] += vertex_[i];
+                    }
+                }
+                G const norm_ = G(1) / G(dimension_);
+                for (G & coordinate_ : centre_) {
+                    coordinate_ *= norm_;
+                    _out << coordinate_ << ' ';
+                }
+                for (G const & component_ : facet_.normal_) {
+                    _out << (facet_.outward_ ? component_ : -component_) << ' ';
+                }
+                _out << '\n';
+            }
+            _out << "e\n";
+            for (point_type const & centre_ : centres_) {
+                std::copy_n(std::begin(centre_), dimension_, std::ostream_iterator< G >(_out, " "));
+                _out << '\n';
+            }
+            _out << "e\n";
         }
         return _out;
     }
@@ -775,6 +802,12 @@ public : // quick hull algorithm
         }
         _out << "print '}'\n";
         return _out;
+    }
+
+    std::ostream &
+    pause(std::ostream & _out, std::string const & _text = "") const
+    {
+        return _out << "pause -1 '" << _text << "'\n";
     }
 #endif
 
