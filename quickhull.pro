@@ -20,9 +20,9 @@ CONFIG(debug, debug|release) {
     #DEFINES += _GLIBCXX_DEBUG=1
 }
 
-QMAKE_CXXFLAGS_DEBUG += -pg
+#QMAKE_CXXFLAGS_DEBUG += -pg
 #-fno-default-inline -fno-inline
-QMAKE_LFLAGS_DEBUG   += -pg
+#QMAKE_LFLAGS_DEBUG   += -pg
 #-fno-default-inline -fno-inline
 
 win32 {

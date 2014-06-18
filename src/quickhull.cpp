@@ -18,14 +18,14 @@
 int
 main(int argc, char * argv[])
 {
-//    if (argc < 2) {
-//        std::cerr << "error: argc == "  << argc << std::endl;
-//        return EXIT_FAILURE; argv[1]
-//    }
+    if (argc < 2) {
+        std::cerr << "error: argc == "  << argc << std::endl;
+        return EXIT_FAILURE;
+    }
     using size_type = std::size_t;
 
     std::ifstream ifs_;
-    ifs_.open("points.txt"); // rbox n D3 s 100 > points.txt
+    ifs_.open(argv[1]); // rbox n D3 s 100 > points.txt
     if (!ifs_.is_open()) {
         std::cerr << "file is not open" << std::endl;
         return EXIT_FAILURE;
@@ -92,8 +92,10 @@ main(int argc, char * argv[])
     }
     auto const & facets_ = convex_hull_.facets_;
     auto const & removed_facets_ = convex_hull_.removed_facets_;
-    std::cout << "total number of facets and number of facets removed = " << facets_.size() << ' ' << removed_facets_.size() << std::endl;
-#if 0
+    size_type const facets_count_ = facets_.size();
+    size_type const removed_facets_count_ = removed_facets_.size();
+    std::cout << "total number of facets and number of facets removed = " << facets_count_ << ' ' << removed_facets_.size() << std::endl;
+#if 1
     std::ofstream ofs_;
     ofs_.open("script.txt"); // gnuplot> load 'script.txt'
     if (!ofs_.is_open()) {
@@ -121,7 +123,7 @@ main(int argc, char * argv[])
     }
     }
     ofs_ << " '-' with points notitle, '-' with labels offset 0,char 1 notitle";
-    for (std::size_t i = 0; i < facets_.size(); ++i) {
+    for (std::size_t i = 0; i < facets_count_ - removed_facets_count_; ++i) {
         ofs_ << ", '-' with lines notitle";
     }
     ofs_ << ';' << std::endl;
@@ -141,20 +143,24 @@ main(int argc, char * argv[])
         ++i;
     }
     ofs_ << 'e' << std::endl;
-    for (auto const & facet_ : facets_) {
-        auto const & vertices_ = facet_.vertices_;
-        for (size_type const vertex_ : vertices_) {
-            for (G const & coordinate_ : points_.at(vertex_)) {
+    auto const eend = removed_facets_.cend();
+    for (size_type i = 0; i < facets_count_; ++i) {
+        if (std::find(removed_facets_.cbegin(), eend, i) == eend) {
+            auto const & facet_ = facets_[i];
+            auto const & vertices_ = facet_.vertices_;
+            for (size_type const vertex_ : vertices_) {
+                for (G const & coordinate_ : points_.at(vertex_)) {
+                    ofs_ << coordinate_ << ' ';
+                }
+                ofs_ << std::endl;
+            }
+            point_type const & first_vertex_ = points_.at(vertices_.front());
+            for (G const & coordinate_ : first_vertex_) {
                 ofs_ << coordinate_ << ' ';
             }
             ofs_ << std::endl;
+            ofs_ << 'e' << std::endl;
         }
-        point_type const & first_vertex_ = points_.at(vertices_.front());
-        for (G const & coordinate_ : first_vertex_) {
-            ofs_ << coordinate_ << ' ';
-        }
-        ofs_ << std::endl;
-        ofs_ << 'e' << std::endl;
     }
 #endif
     return EXIT_SUCCESS;

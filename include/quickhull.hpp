@@ -360,10 +360,10 @@ private : // geometry and basic operation on geometric primitives
     }
 
     size_type
-    get_furthest(size_type const _bad_value) const
+    get_furthest() const
     {
         if (ranking_.empty()) {
-            return _bad_value;
+            return facets_.size();
         } else {
             auto const r = std::prev(ranking_.cend());
             return r->second;
@@ -465,18 +465,18 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
         }
         assert(basis_.size() == dimension_ + 1); // (d + 1) vertices defining a d-simplex
-        internal_set_.splice(internal_set_.end(), basis_, basis_.begin());
+        internal_set_.splice(internal_set_.end(), basis_, basis_.begin()); // rejudge 0-indexed point
         assert(basis_.size() == dimension_); // d vertices defining a facet
         bool outward_ = !(eps < steal_best(internal_set_, basis_)); // is top oriented?
         auto const vbeg = basis_.cbegin();
         auto const vend = basis_.cend();
         for (auto exclusive = vend; exclusive != vbeg; --exclusive) { // creation of rest d facets of the simplex
-            size_type const n = facets_.size();
+            size_type const newfacet = facets_.size();
             facets_.emplace_back(vbeg, exclusive, vend);
             facet & facet_ = facets_.back();
             set_hyperplane_equation(facet_, outward_);
             ordered_.emplace_back(facet_.vertices_.cbegin(), facet_.vertices_.cend());
-            rank(partition(facet_, internal_set_), n);
+            rank(partition(facet_, internal_set_), newfacet);
             outward_ = !outward_;
         }
         assert(dimension_ + 1 == facets_.size()); // simplex
@@ -495,21 +495,23 @@ public : // largest possible simplex heuristic, convex hull algorithm
     bool
     create_convex_hull()
     {
-        size_type facet_key = facets_.size(); // unique key for facets_
-        assert(facet_key == dimension_ + 1);
         point_list outside_set_;
         facet_set visited_;
         facet_set viewable_;
         facet_set visible_facets_;
+        auto const vfend = visible_facets_.end();
+        facet_set neighbours_;
         facets_type newfacets_;
-        for (size_type furthest = get_furthest(facet_key); furthest != facet_key; furthest = get_furthest(facet_key)) {
-            facet & facet_ = facets_[furthest];
-            size_type const apex = facet_.outside_set_.front();
+        point_array vertices_;
+        for (size_type best_facet = get_furthest(); best_facet != facets_.size(); best_facet = get_furthest()) {
+            facet & best_facet_ = facets_[best_facet];
+            size_type const apex = best_facet_.outside_set_.front();
+            best_facet_.outside_set_.pop_front();
             point_type const & apex_ = points_[apex];
-            visible_facets_ = {furthest};
+            visible_facets_ = {best_facet};
             { // find visible facets
-                visited_ = {furthest};
-                viewable_ = facet_.neighbours_;
+                visited_ = {best_facet};
+                viewable_ = best_facet_.neighbours_;
                 while (!viewable_.empty()) {
                     auto const first = viewable_.begin();
                     size_type const f = *first;
@@ -526,41 +528,39 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
             // the boundary of visible facets is the set of horizon ridges
             // Each ridge signifies the adjacency of two facets.
-            facet_.outside_set_.pop_front(); // already assorted
-            auto const vfend = visible_facets_.end();
-            for (size_type const v : visible_facets_) {
-                facet & visible_facet_ = facets_[v];
-                point_array vertices_ = std::move(visible_facet_.vertices_);
+            for (size_type const visible_facet : visible_facets_) {
+                facet & visible_facet_ = facets_[visible_facet];
+                vertices_ = std::move(visible_facet_.vertices_);
                 outside_set_.splice(outside_set_.end(), visible_facet_.outside_set_);
-                unrank(v);
-                remove_facet(v);
-                for (size_type const n : visible_facet_.neighbours_) {
-                    if (visible_facets_.find(n) == vfend) { // neighbour is not visible
-                        point_set const & horizon_ = ordered_.at(n);
-                        auto const hend = horizon_.end();
+                neighbours_ = std::move(visible_facet_.neighbours_);
+                unrank(visible_facet);
+                remove_facet(visible_facet);
+                for (size_type const neighbour : neighbours_) {
+                    if (visible_facets_.find(neighbour) == vfend) { // neighbour is not visible
+                        point_set const & horizon_ = ordered_[neighbour];
                         point_array ridge_; // horizon ridge + furthest point = new facet
                         ridge_.reserve(dimension_);
-                        for (size_type const p : vertices_) { // facets intersection with keeping of points order as in visible facet
-                            auto const h = horizon_.find(p);
-                            if (h == hend) {
+                        auto const hend = horizon_.cend();
+                        for (size_type const vertex : vertices_) { // facets intersection with keeping of points order as in visible facet
+                            if (horizon_.find(vertex) == hend) {
                                 ridge_.push_back(apex); // insert furthest point instead of inner point of visible facet
                             } else {
-                                ridge_.push_back(p);
+                                ridge_.push_back(vertex);
                             }
                         }
                         assert(ridge_.size() == dimension_);
-                        size_type const newfacet = add_facet(std::move(ridge_), n);
+                        size_type const newfacet = add_facet(std::move(ridge_), neighbour);
                         newfacets_.push_back(newfacet);
                         // replace visible facet became internal with newly created facet in neighbours set
-                        facet & horizon_facet_ = facets_[n];
-                        horizon_facet_.neighbours_.erase(v);
+                        facet & horizon_facet_ = facets_[neighbour];
+                        horizon_facet_.neighbours_.erase(visible_facet);
                         horizon_facet_.neighbours_.insert(horizon_facet_.neighbours_.end(), newfacet);
                     }
                 }
             }
             adjacency(newfacets_);
-            for (size_type const n : newfacets_) {
-                rank(partition(facets_[n], outside_set_), n);
+            for (size_type const newfacet : newfacets_) {
+                rank(partition(facets_[newfacet], outside_set_), newfacet);
             }
             newfacets_.clear();
             internal_set_.splice(internal_set_.end(), outside_set_);
