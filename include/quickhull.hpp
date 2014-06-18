@@ -92,7 +92,7 @@ private : // math (simple functions, matrices, etc)
     }
 
     G
-    det(size_type const _size) // based on LU factorization part of LUP decomposition algorithm
+    det(size_type const _size) // based on LU factorization
     {
         G det_(1);
         for (size_type i = 0; i < _size; ++i) {
@@ -246,6 +246,18 @@ private : // geometry and basic operation on geometric primitives
         }
     }
 
+    point_set const &
+    get_ordered_simplex(facet const & _horizon_facet, size_type const _neighbour)
+    { // construct only on demand
+        assert(ordered_.size() == facets_.size());
+        point_set & ordered_simplex_ = ordered_[_neighbour];
+        if (ordered_simplex_.empty()) {
+            ordered_simplex_.insert(_horizon_facet.vertices_.cbegin(),
+                                    _horizon_facet.vertices_.cend());
+        }
+        return ordered_simplex_;
+    }
+
     size_type
     add_facet(point_array && _vertices, size_type const _neighbour)
     {
@@ -254,7 +266,7 @@ private : // geometry and basic operation on geometric primitives
             facets_.emplace_back(std::move(_vertices), _neighbour);
             facet & facet_ = facets_.back();
             set_hyperplane_equation(facet_);
-            ordered_.emplace_back(facet_.vertices_.cbegin(), facet_.vertices_.cend());
+            ordered_.emplace_back();
             return f;
         } else {
             size_type const f = removed_facets_.back();
@@ -263,7 +275,7 @@ private : // geometry and basic operation on geometric primitives
             facet_.vertices_ = std::move(_vertices);
             facet_.neighbours_ = {_neighbour};
             set_hyperplane_equation(facet_);
-            ordered_[f].insert(facet_.vertices_.cbegin(), facet_.vertices_.cend());
+            ordered_[f].clear();
             return f;
         }
     }
@@ -279,7 +291,7 @@ private : // geometry and basic operation on geometric primitives
     // http://math.stackexchange.com/questions/822741/
     G
     hypervolume(point_list const & _vertices, point_type const & _apex)
-    { // rows_-dimensional oriented hypervolume of corresponding parallelotope, strictly positive value for subspaces
+    { // rows_-dimensional oriented (but non-negative value for subspaces) hypervolume of corresponding parallelotope
         size_type const rows_ = _vertices.size();
         assert(!(dimension_ < rows_));
         row_type & origin_ = shadow_matrix_.back();
@@ -468,6 +480,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         internal_set_.splice(internal_set_.end(), basis_, basis_.begin()); // rejudge 0-indexed point
         assert(basis_.size() == dimension_); // d vertices defining a facet
         bool outward_ = !(eps < steal_best(internal_set_, basis_)); // is top oriented?
+        ordered_.resize(dimension_ + 1);
         auto const vbeg = basis_.cbegin();
         auto const vend = basis_.cend();
         for (auto exclusive = vend; exclusive != vbeg; --exclusive) { // creation of rest d facets of the simplex
@@ -475,7 +488,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
             facets_.emplace_back(vbeg, exclusive, vend);
             facet & facet_ = facets_.back();
             set_hyperplane_equation(facet_, outward_);
-            ordered_.emplace_back(facet_.vertices_.cbegin(), facet_.vertices_.cend());
             rank(partition(facet_, internal_set_), newfacet);
             outward_ = !outward_;
         }
@@ -496,13 +508,14 @@ public : // largest possible simplex heuristic, convex hull algorithm
     create_convex_hull()
     {
         point_list outside_set_;
-        facet_set visited_;
+        facet_set visited_; // invisible (over the horizon) facets
         facet_set viewable_;
         facet_set visible_facets_;
         auto const vfend = visible_facets_.end();
         facet_set neighbours_;
         facets_type newfacets_;
         point_array vertices_;
+        point_array ridge_; // horizon ridge + furthest point = new facet
         for (size_type best_facet = get_furthest(); best_facet != facets_.size(); best_facet = get_furthest()) {
             facet & best_facet_ = facets_[best_facet];
             size_type const apex = best_facet_.outside_set_.front();
@@ -510,7 +523,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
             point_type const & apex_ = points_[apex];
             visible_facets_ = {best_facet};
             { // find visible facets
-                visited_ = {best_facet};
                 viewable_ = best_facet_.neighbours_;
                 while (!viewable_.empty()) {
                     auto const first = viewable_.begin();
@@ -518,13 +530,15 @@ public : // largest possible simplex heuristic, convex hull algorithm
                     facet const & watchable_ = facets_[f];
                     if (eps < watchable_.distance(apex_)) {
                         visible_facets_.insert(f);
-                        std::set_difference(watchable_.neighbours_.cbegin(), watchable_.neighbours_.cend(),
+                        std::set_difference(watchable_.neighbours_.cbegin(),
+                                            watchable_.neighbours_.cend(),
                                             visited_.cbegin(), visited_.cend(),
                                             std::inserter(viewable_, viewable_.end()));
                     }
                     visited_.insert(f);
                     viewable_.erase(first);
                 }
+                visited_.clear();
             }
             // the boundary of visible facets is the set of horizon ridges
             // Each ridge signifies the adjacency of two facets.
@@ -537,8 +551,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 remove_facet(visible_facet);
                 for (size_type const neighbour : neighbours_) {
                     if (visible_facets_.find(neighbour) == vfend) { // neighbour is not visible
-                        point_set const & horizon_ = ordered_[neighbour];
-                        point_array ridge_; // horizon ridge + furthest point = new facet
+                        // replace visible facet became internal with newly created facet in neighbours set
+                        facet & horizon_facet_ = facets_[neighbour];
+                        point_set const & horizon_ = get_ordered_simplex(horizon_facet_, neighbour);
                         ridge_.reserve(dimension_);
                         auto const hend = horizon_.cend();
                         for (size_type const vertex : vertices_) { // facets intersection with keeping of points order as in visible facet
@@ -551,8 +566,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         assert(ridge_.size() == dimension_);
                         size_type const newfacet = add_facet(std::move(ridge_), neighbour);
                         newfacets_.push_back(newfacet);
-                        // replace visible facet became internal with newly created facet in neighbours set
-                        facet & horizon_facet_ = facets_[neighbour];
                         horizon_facet_.neighbours_.erase(visible_facet);
                         horizon_facet_.neighbours_.insert(horizon_facet_.neighbours_.end(), newfacet);
                     }

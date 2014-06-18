@@ -16,14 +16,12 @@ CONFIG(release, debug|release) {
     DEFINES += NDEBUG=1
 }
 CONFIG(debug, debug|release) {
-    #DEFINES += _DEBUG=1 DEBUG=1
-    #DEFINES += _GLIBCXX_DEBUG=1
+    DEFINES += _DEBUG=1 DEBUG=1
+    DEFINES += _GLIBCXX_DEBUG=1
 }
 
-#QMAKE_CXXFLAGS_DEBUG += -pg
-#-fno-default-inline -fno-inline
-#QMAKE_LFLAGS_DEBUG   += -pg
-#-fno-default-inline -fno-inline
+QMAKE_CXXFLAGS_DEBUG += -fno-default-inline -fno-inline
+QMAKE_LFLAGS_DEBUG   += -fno-default-inline -fno-inline
 
 win32 {
     CONFIG += console thread
