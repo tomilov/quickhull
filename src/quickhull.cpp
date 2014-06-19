@@ -40,7 +40,7 @@ main(int argc, char * argv[])
         std::cerr << "no count at second line" << std::endl;
         return EXIT_FAILURE;
     }
-    using G = long double;
+    using G = double;
     using point_type = std::valarray< G >;
     using points_type = std::deque< point_type >;
     size_type const count_ = std::stoll(line_);
@@ -91,11 +91,14 @@ main(int argc, char * argv[])
         }
     }
     auto const & facets_ = convex_hull_.facets_;
-    auto const & removed_facets_ = convex_hull_.removed_facets_;
     size_type const facets_count_ = facets_.size();
+    auto const & removed_facets_ = convex_hull_.removed_facets_;
     size_type const removed_facets_count_ = removed_facets_.size();
-    std::cout << "total number of facets and number of facets removed = " << facets_count_ << ' ' << removed_facets_.size() << std::endl;
-#if 1
+    std::cout << "number of facets: " << facets_count_ - removed_facets_count_ << std::endl;
+    if (!removed_facets_.empty()) {
+        std::cout << "number of removed facets: " << removed_facets_.size() << std::endl;
+    }
+#if 0
     std::ofstream ofs_;
     ofs_.open("script.txt"); // gnuplot> load 'script.txt'
     if (!ofs_.is_open()) {
@@ -127,15 +130,16 @@ main(int argc, char * argv[])
         ofs_ << ", '-' with lines notitle";
     }
     ofs_ << ';' << std::endl;
-    for (point_type const & point_ : points_) {
+    for (std::size_t i = 0; i < count_; ++i) {
+        point_type const & point_ = points_[i];
         for (G const & coordinate_ : point_) {
             ofs_ << coordinate_ << ' ';
         }
         ofs_ << std::endl;
     }
     ofs_ << 'e' << std::endl;
-    std::size_t i = 0;
-    for (point_type const & point_ : points_) {
+    for (std::size_t i = 0; i < count_; ++i) {
+        point_type const & point_ = points_[i];
         for (G const & coordinate_ : point_) {
             ofs_ << coordinate_ << ' ';
         }
@@ -144,17 +148,18 @@ main(int argc, char * argv[])
     }
     ofs_ << 'e' << std::endl;
     auto const eend = removed_facets_.cend();
+    auto const ebeg = removed_facets_.cbegin();
     for (size_type i = 0; i < facets_count_; ++i) {
-        if (std::find(removed_facets_.cbegin(), eend, i) == eend) {
+        if (std::find(ebeg, eend, i) == eend) {
             auto const & facet_ = facets_[i];
             auto const & vertices_ = facet_.vertices_;
             for (size_type const vertex_ : vertices_) {
-                for (G const & coordinate_ : points_.at(vertex_)) {
+                for (G const & coordinate_ : points_[vertex_]) {
                     ofs_ << coordinate_ << ' ';
                 }
                 ofs_ << std::endl;
             }
-            point_type const & first_vertex_ = points_.at(vertices_.front());
+            point_type const & first_vertex_ = points_[vertices_.front()];
             for (G const & coordinate_ : first_vertex_) {
                 ofs_ << coordinate_ << ' ';
             }
