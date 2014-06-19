@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ext/mt_allocator.h>
+
 #include <vector>
 #include <deque>
 #include <set>
@@ -37,7 +39,7 @@ private : // math (simple functions, matrices, etc)
     }
 
     using row_type = std::valarray< G >;
-    using matrix_type = std::vector< row_type >;
+    using matrix_type = std::vector< row_type, __gnu_cxx::__mt_alloc< row_type > >;
 
     matrix_type matrix_;
     matrix_type shadow_matrix_;
@@ -140,10 +142,10 @@ private : // math (simple functions, matrices, etc)
 
 public :
 
-    using point_array = std::vector< size_type >;
-    using point_deque = std::deque< size_type >;
-    using point_list = std::list< size_type >;
-    using point_set = std::set< size_type >;
+    using point_array = std::vector< size_type, __gnu_cxx::__mt_alloc< size_type > >;
+    using point_deque = std::deque< size_type, __gnu_cxx::__mt_alloc< size_type > >;
+    using point_list = std::list< size_type, __gnu_cxx::__mt_alloc< size_type > >;
+    using point_set = std::set< size_type, std::less< size_type >, __gnu_cxx::__mt_alloc< size_type > >;
 
     points_type const & points_;
     point_list internal_set_;
@@ -167,19 +169,21 @@ public :
 
     struct facet;
 
-    using facet_set = std::set< size_type >;
+    using facet_set = std::set< size_type, std::less< size_type >, __gnu_cxx::__mt_alloc< size_type > >;
 
     struct facet // (d - 1)-dimensional faces
     {
 
-        using normal_type = std::vector< G >;
+        using normal_type = std::vector< G, __gnu_cxx::__mt_alloc< G > >;
 
         point_array vertices_; // d points : oriented
         facet_set neighbours_;
         point_list outside_set_; // if not empty, then first point is furthest from this facet
         point_deque coplanar_;
-        normal_type normal_; // normal coordinates
-        G D; // offset part of hyperplane euqation
+
+        // hyperplane equation
+        normal_type normal_; // components of normalized normal vector
+        G D; // distance of a hyperplane from the origin
 
         template< typename InputIterator >
         facet(InputIterator first, InputIterator mid, InputIterator last)
@@ -210,14 +214,14 @@ public :
 
     };
 
-    using facets_storage_type = std::deque< facet >;
+    using facets_storage_type = std::deque< facet, __gnu_cxx::__mt_alloc< facet > >;
 
     facets_storage_type facets_;
 
 private : // geometry and basic operation on geometric primitives
 
-    using vertices_sets_type = std::deque< point_set >;
-    using facets_type = std::deque< size_type >;
+    using vertices_sets_type = std::deque< point_set, __gnu_cxx::__mt_alloc< point_set > >;
+    using facets_type = std::deque< size_type, __gnu_cxx::__mt_alloc< size_type > >;
 
     vertices_sets_type ordered_; // ordered, but not oriented vertices of facets
     facets_type removed_facets_;
@@ -338,8 +342,8 @@ private : // geometry and basic operation on geometric primitives
         return hypervolume_;
     }
 
-    using ranking_type = std::multimap< G, size_type >;
-    using ranking_meta_type = std::map< size_type, typename ranking_type::iterator >;
+    using ranking_type = std::multimap< G, size_type, std::less< G >, __gnu_cxx::__mt_alloc< std::pair< G const, size_type > > >;
+    using ranking_meta_type = std::map< size_type, typename ranking_type::iterator, std::less< size_type >, __gnu_cxx::__mt_alloc< std::pair< size_type const, typename ranking_type::iterator > > >;
 
     ranking_type ranking_;
     ranking_meta_type ranking_meta_;
