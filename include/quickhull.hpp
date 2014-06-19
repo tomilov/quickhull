@@ -11,11 +11,6 @@
 #include <utility>
 #include <numeric>
 
-#ifdef GNUPLOT
-#include <iostream>
-#include <ostream>
-#endif
-
 #include <cassert>
 
 template< typename points_type >
@@ -213,47 +208,19 @@ public :
             return std::inner_product(normal_.cbegin(), normal_.cend(), _other.normal_.cbegin(), zero);
         }
 
-#ifdef GNUPLOT
-        std::ostream &
-        print_info(std::ostream & _out) const
-        {
-            _out << "[ p: ";
-            for (size_type const v : vertices_) {
-                _out << v << "; ";
-            }
-            _out << " o: ";
-            for (size_type const o : outside_set_) {
-                _out << o << "; ";
-            }
-            _out << " c: ";
-            for (size_type const c : coplanar_) {
-                _out << c << "; ";
-            }
-            _out << " n: ";
-            for (size_type const n : neighbours_) {
-                _out << n << "; ";
-            }
-            _out << " @: ";
-            for (G const & x : normal_) {
-                _out << x << "; ";
-            }
-            return _out << ']';
-        }
-#endif
-
     };
 
     using facets_storage_type = std::deque< facet >;
-    using facets_type = std::deque< size_type >;
 
     facets_storage_type facets_;
-    facets_type removed_facets_;
 
 private : // geometry and basic operation on geometric primitives
 
     using vertices_sets_type = std::deque< point_set >;
+    using facets_type = std::deque< size_type >;
 
     vertices_sets_type ordered_; // ordered, but not oriented vertices of facets
+    facets_type removed_facets_;
 
     void
     set_hyperplane_equation(facet & _facet)
@@ -535,11 +502,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 }
             }
         }
-#ifdef GNUPLOT
-        show_scene(std::cerr);
-        print_info(std::cerr);
-        pause(std::cerr, "simplex");
-#endif
         return basis_;
     }
 
@@ -579,11 +541,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 }
                 visited_.clear();
             }
-#ifdef GNUPLOT
-            show_scene(std::cerr, visible_facets_, apex);
-            print_info(std::cerr);
-            pause(std::cerr, "visible facets and furthest point");
-#endif
             // the boundary of visible facets is the set of horizon ridges
             // Each ridge signifies the adjacency of two facets.
             assert(newfacets_.empty());
@@ -623,184 +580,15 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
             newfacets_.clear();
             internal_set_.splice(internal_set_.end(), outside_set_);
-#ifdef GNUPLOT
-            show_scene(std::cerr);
-            print_info(std::cerr);
-            pause(std::cerr, "all facets");
-#endif
         }
         ordered_.clear();
+        while (!removed_facets_.empty()) {
+            size_type const empty_ = removed_facets_.back();
+            removed_facets_.pop_back();
+            facets_[empty_] = std::move(facets_.back());
+            facets_.pop_back();
+        }
         return true;
     }
-
-
-#ifdef GNUPLOT
-    std::ostream &
-    show_scene(std::ostream & _out,
-               facet_set const & _visible_facets,
-               size_type const _apex) const
-    {
-        _out << "clear\n";
-        if (facets_.empty()) {
-            return _out;
-        }
-        _out << "splot ";
-        size_type const size_ = facets_.size();
-        auto const vend = _visible_facets.cend();
-        auto const ebeg = removed_facets_.cbegin();
-        auto const eend = removed_facets_.cend();
-        for (size_type i = 0; i < size_; ++i) {
-            if (std::find(ebeg, eend, i) == eend) {
-                _out << "'-' with lines notitle linetype 1 ";
-                if (_visible_facets.find(i) != vend) {
-                    _out << "linecolor rgb 'green'";
-                } else {
-                    _out << "linecolor rgb 'blue'";
-                }
-                _out << ", ";
-            }
-        }
-        _out << "'-' with points notitle pointtype 6 pointsize 1, ";
-        _out << "'-' with points notitle pointtype 1 linecolor rgb 'purple', ";
-        _out << "'-' with labels notitle offset character 0, character 0.5 font 'Times,6'";
-        _out << ";\n";
-        for (size_type i = 0; i < size_; ++i) {
-            if (std::find(ebeg, eend, i) == eend) {
-                facet const & facet_ = facets_[i];
-                point_array const & vertices_ = facet_.vertices_;
-                for (size_type const v : vertices_) {
-                    std::copy_n(std::begin(points_[v]), dimension_, std::ostream_iterator< G >(_out, " "));
-                    _out << '\n';
-                }
-                std::copy_n(std::begin(points_[vertices_.front()]), dimension_, std::ostream_iterator< G >(_out, " "));
-                _out << "\ne\n";
-            }
-        }
-        {
-            std::copy_n(std::begin(points_[_apex]), dimension_, std::ostream_iterator< G >(_out, " "));
-            _out << "\ne\n";
-        }
-        for (point_type const & point_ : points_) {
-            std::copy_n(std::begin(point_), dimension_, std::ostream_iterator< G >(_out, " "));
-            _out << '\n';
-        }
-        _out << "e\n";
-        size_type const points_count = points_.size();
-        for (size_type p = 0; p < points_count; ++p) {
-            std::copy_n(std::begin(points_[p]), dimension_, std::ostream_iterator< G >(_out, " "));
-            _out << p << '\n';
-        }
-        return _out << "e\n";
-    }
-
-    std::ostream &
-    show_scene(std::ostream & _out) const
-    {
-        _out << "clear\n";
-        if (facets_.empty()) {
-            return _out;
-        }
-        _out << "splot ";
-        auto const ebeg = removed_facets_.cbegin();
-        auto const eend = removed_facets_.cend();
-        size_type const size_ = facets_.size();
-        for (size_type i = 0; i < size_; ++i) {
-            if (std::find(ebeg, eend, i) == eend) {
-                _out << "'-' with lines notitle linetype 1 linecolor rgb 'black', ";
-            }
-        }
-        _out << "'-' with points notitle pointtype 1 linecolor rgb 'purple', ";
-        _out << "'-' with labels notitle offset character 0, character 0.5 font 'Times,6', ";
-        _out << "'-' with vectors head filled linetype 1 linecolor rgb 'green', ";
-        _out << "'-' with points pointtype 7 linecolor rgb 'red'";
-        _out << ";\n";
-        for (size_type i = 0; i < size_; ++i) {
-            if (std::find(ebeg, eend, i) == eend) {
-                facet const & facet_ = facets_[i];
-                point_array const & vertices_ = facet_.vertices_;
-                for (size_type const v : vertices_) {
-                    std::copy_n(std::begin(points_[v]), dimension_, std::ostream_iterator< G >(_out, " "));
-                    _out << '\n';
-                }
-                std::copy_n(std::begin(points_[vertices_.front()]), dimension_, std::ostream_iterator< G >(_out, " "));
-                _out << "\ne\n";
-            }
-        }
-        for (point_type const & point_ : points_) {
-            std::copy_n(std::begin(point_), dimension_, std::ostream_iterator< G >(_out, " "));
-            _out << '\n';
-        }
-        _out << "e\n";
-        size_type const points_count = points_.size();
-        for (size_type p = 0; p < points_count; ++p) {
-            std::copy_n(std::begin(points_[p]), dimension_, std::ostream_iterator< G >(_out, " "));
-            _out << p << '\n';
-        }
-        _out << "e\n";
-        std::vector< point_type > centres_(facets_.size());
-        auto const cbeg = centres_.begin();
-        auto const cend = centres_.end();
-        auto cit = cbeg;
-        for (size_type i = 0; i < size_; ++i) {
-            if (std::find(ebeg, eend, i) == eend) {
-                facet const & facet_ = facets_[i];
-                assert(cit != cend);
-                point_type & centre_ = *cit++;
-                centre_.resize(dimension_, G(0));
-                for (size_type const v : facet_.vertices_) {
-                    point_type const & vertex_ = points_[v];
-                    for (size_type i = 0; i < dimension_; ++i) {
-                        centre_[i] += vertex_[i];
-                    }
-                }
-                G const norm_ = G(1) / G(dimension_);
-                for (G & coordinate_ : centre_) {
-                    coordinate_ *= norm_;
-                    _out << coordinate_ << ' ';
-                }
-                for (G const & component_ : facet_.normal_) {
-                    _out << component_ << ' ';
-                }
-                _out << '\n';
-            }
-        }
-        _out << "e\n";
-        for (point_type const & centre_ : centres_) {
-            std::copy_n(std::begin(centre_), dimension_, std::ostream_iterator< G >(_out, " "));
-            _out << '\n';
-        }
-        return _out << "e\n";
-    }
-
-    std::ostream &
-    print_info(std::ostream & _out) const
-    {
-        size_type const size_ = facets_.size();
-        _out << "print 'facets (" << size_ << "): ";
-        auto const ebeg = removed_facets_.cbegin();
-        auto const eend = removed_facets_.cend();
-        for (size_type i = 0; i < size_; ++i) {
-            if (std::find(ebeg, eend, i) == eend) {
-                _out << i << ';';
-            }
-        }
-        _out << "'\n";
-        _out << "print '{'\n";
-        for (size_type i = 0; i < size_; ++i) {
-            if (std::find(ebeg, eend, i) == eend) {
-                _out << "print '\tfacet #" << i << " = ";
-                facets_[i].print_info(_out) << "'\n";
-            }
-        }
-        _out << "print '}'\n";
-        return _out;
-    }
-
-    std::ostream &
-    pause(std::ostream & _out, std::string const & _text = "") const
-    {
-        return _out << "pause -1 '" << _text << "'\n";
-    }
-#endif
 
 };

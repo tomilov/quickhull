@@ -30,6 +30,7 @@ main(int argc, char * argv[])
         std::cerr << "file is not open" << std::endl;
         return EXIT_FAILURE;
     }
+    std::cout << "read file: " << argv[1] << std::endl;
     std::string line_;
     if (!std::getline(ifs_, line_)) {
         std::cerr << "no dim at first line" << std::endl;
@@ -92,13 +93,8 @@ main(int argc, char * argv[])
     }
     auto const & facets_ = convex_hull_.facets_;
     size_type const facets_count_ = facets_.size();
-    auto const & removed_facets_ = convex_hull_.removed_facets_;
-    size_type const removed_facets_count_ = removed_facets_.size();
-    std::cout << "number of facets: " << facets_count_ - removed_facets_count_ << std::endl;
-    if (!removed_facets_.empty()) {
-        std::cout << "number of removed facets: " << removed_facets_.size() << std::endl;
-    }
-#if 0
+    std::cout << "number of facets: " << facets_count_ << std::endl;
+#if 1
     std::ofstream ofs_;
     ofs_.open("script.txt"); // gnuplot> load 'script.txt'
     if (!ofs_.is_open()) {
@@ -125,8 +121,8 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     }
-    ofs_ << " '-' with points notitle, '-' with labels offset 0,char 1 notitle";
-    for (std::size_t i = 0; i < facets_count_ - removed_facets_count_; ++i) {
+    ofs_ << " '-' with points notitle, '-' with labels offset character 0,character 1 notitle";
+    for (std::size_t i = 0; i < facets_count_; ++i) {
         ofs_ << ", '-' with lines notitle";
     }
     ofs_ << ';' << std::endl;
@@ -144,28 +140,22 @@ main(int argc, char * argv[])
             ofs_ << coordinate_ << ' ';
         }
         ofs_ << i << std::endl;
-        ++i;
     }
     ofs_ << 'e' << std::endl;
-    auto const eend = removed_facets_.cend();
-    auto const ebeg = removed_facets_.cbegin();
     for (size_type i = 0; i < facets_count_; ++i) {
-        if (std::find(ebeg, eend, i) == eend) {
-            auto const & facet_ = facets_[i];
-            auto const & vertices_ = facet_.vertices_;
-            for (size_type const vertex_ : vertices_) {
-                for (G const & coordinate_ : points_[vertex_]) {
-                    ofs_ << coordinate_ << ' ';
-                }
-                ofs_ << std::endl;
-            }
-            point_type const & first_vertex_ = points_[vertices_.front()];
-            for (G const & coordinate_ : first_vertex_) {
+        auto const & vertices_ = facets_[i].vertices_;
+        for (size_type const vertex_ : vertices_) {
+            for (G const & coordinate_ : points_[vertex_]) {
                 ofs_ << coordinate_ << ' ';
             }
             ofs_ << std::endl;
-            ofs_ << 'e' << std::endl;
         }
+        point_type const & first_vertex_ = points_[vertices_.front()];
+        for (G const & coordinate_ : first_vertex_) {
+            ofs_ << coordinate_ << ' ';
+        }
+        ofs_ << std::endl;
+        ofs_ << 'e' << std::endl;
     }
 #endif
     return EXIT_SUCCESS;
