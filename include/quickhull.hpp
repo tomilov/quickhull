@@ -81,26 +81,24 @@ private : // math (simple functions, matrices, etc)
     {
         assert(_size < dimension_);
         for (size_type row = 0; row < _size; ++row) {
-            row_type & lhs_ = matrix_[row];
-            row_type const & row_ = shadow_matrix_[row];
-            auto const rbeg = std::begin(row_);
-            auto const rend = std::end(row_);
+            row_type & lhs_ = shadow_matrix_[row];
+            row_type const & row_ = matrix_[row];
             for (size_type col = 0; col < _size; ++col) {
-                lhs_[col] = std::inner_product(rbeg, rend, std::begin(shadow_matrix_[col]), zero);
+                lhs_[col] = std::inner_product(std::begin(row_), std::end(row_), std::begin(matrix_[col]), zero);
             }
         }
     }
 
     G
-    det(size_type const _size) // based on LU factorization
+    det(matrix_type & _matrix, size_type const _size) // based on LU factorization
     {
         G det_ = one;
         for (size_type i = 0; i < _size; ++i) {
             size_type p_ = i;
-            G max_ = abs(matrix_[p_][i]);
+            G max_ = abs(_matrix[p_][i]);
             size_type pivot_ = p_;
             while (++p_ < _size) {
-                G y_ = abs(matrix_[p_][i]);
+                G y_ = abs(_matrix[p_][i]);
                 if (max_ < y_) {
                     max_ = y_;
                     pivot_ = p_;
@@ -109,33 +107,39 @@ private : // math (simple functions, matrices, etc)
             if (!(eps < max_)) { // regular?
                 return zero; // singular
             }
-            row_type & ri_ = matrix_[i];
+            row_type & ri_ = _matrix[i];
             if (pivot_ != i) {
                 det_ = -det_; // each permutation flips sign of det
-                ri_.swap(matrix_[pivot_]);
+                ri_.swap(_matrix[pivot_]);
             }
             G & dia_ = ri_[i];
             G const inv_ = one / dia_;
             det_ *= std::move(dia_); // det is multiple of diagonal elements
             for (size_type j = 1 + i; j < _size; ++j) {
-                matrix_[j][i] *= inv_;
+                _matrix[j][i] *= inv_;
             }
             for (size_type a = 1 + i; a < _size; ++a) {
                 row_type & a_ = minor_[a - 1];
-                G const & ai_ = matrix_[a][i];
+                G const & ai_ = _matrix[a][i];
                 for (size_type b = 1 + i; b < _size; ++ b) {
                     a_[b - 1] = ai_ * ri_[b];
                 }
             }
             for (size_type a = 1 + i; a < _size; ++a) {
                 row_type const & a_ = minor_[a - 1];
-                row_type & ra_ = matrix_[a];
+                row_type & ra_ = _matrix[a];
                 for (size_type b = 1 + i; b < _size; ++ b) {
                     ra_[b] -= a_[b - 1];
                 }
             }
         }
         return det_;
+    }
+
+    G
+    det()
+    {
+        return det(matrix_, dimension_);
     }
 
 public :
@@ -236,14 +240,14 @@ private : // geometry and basic operation on geometric primitives
         G N = zero;
         for (size_type i = 0; i < dimension_; ++i) {
             restore_matrix(i);
-            G n = det(dimension_);
+            G n = det();
             N += n * n;
             _facet.normal_[i] = std::move(n);
         }
         using std::sqrt;
         N = -sqrt(N);
         restore_matrix();
-        _facet.D = -det(dimension_) / N;
+        _facet.D = -det() / N;
         for (size_type i = 0; i < dimension_; ++i) {
             _facet.normal_[i] /= N;
         }
@@ -292,28 +296,20 @@ private : // geometry and basic operation on geometric primitives
         row_type & origin_ = shadow_matrix_.back();
         std::copy_n(std::begin(_apex), dimension_, std::begin(origin_));
         auto vertex = _vertices.cbegin();
+        for (size_type row = 0; row < rows_; ++row) {
+            assert(vertex != _vertices.cend());
+            std::copy_n(std::begin(points_[*vertex]), dimension_, std::begin(matrix_[row]));
+            ++vertex;
+        }
+        for (size_type row = 0; row < rows_; ++row) { // vectorize
+            matrix_[row] -= origin_;
+        }
         if (rows_ == dimension_) {
-            for (size_type row = 0; row < dimension_; ++row) {
-                assert(vertex != _vertices.cend());
-                std::copy_n(std::begin(points_[*vertex]), dimension_, std::begin(matrix_[row]));
-                ++vertex;
-            }
-            for (size_type row = 0; row < dimension_; ++row) { // vectorize
-                matrix_[row] -= origin_;
-            }
-            return det(dimension_);
+            return det();
         } else {
-            for (size_type row = 0; row < rows_; ++row) {
-                assert(vertex != _vertices.cend());
-                std::copy_n(std::begin(points_[*vertex]), dimension_, std::begin(shadow_matrix_[row]));
-                ++vertex;
-            }
-            for (size_type row = 0; row < rows_; ++row) { // vectorize
-                shadow_matrix_[row] -= origin_;
-            }
             square_matrix(rows_);
             using std::sqrt;
-            return sqrt(det(rows_));
+            return sqrt(det(shadow_matrix_, rows_));
         }
     }
 
