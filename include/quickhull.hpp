@@ -241,7 +241,7 @@ private : // geometry and basic operation on geometric primitives
             _facet.normal_[i] = std::move(n);
         }
         using std::sqrt;
-        N = -sqrt(N); // minus, else orientation and distance are contradirectional
+        N = -sqrt(N);
         restore_matrix();
         _facet.D = -det(dimension_) / N;
         for (size_type i = 0; i < dimension_; ++i) {
