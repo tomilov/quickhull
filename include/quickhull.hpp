@@ -169,8 +169,6 @@ public :
         shadow_matrix_.back().resize(dimension_);
     }
 
-    struct facet;
-
     using facet_set = std::set< size_type >;
 
     struct facet // (d - 1)-dimensional faces
@@ -245,7 +243,7 @@ private : // geometry and basic operation on geometric primitives
             _facet.normal_[i] = std::move(n);
         }
         using std::sqrt;
-        N = -sqrt(N);
+        N = sqrt(N);
         restore_matrix();
         _facet.D = -det() / N;
         for (size_type i = 0; i < dimension_; ++i) {
@@ -478,21 +476,20 @@ public : // largest possible simplex heuristic, convex hull algorithm
         if (!(eps < abs(hypervolume_))) {
             return basis_; // can't find linearly independent point
         }
-        bool outward_ = (hypervolume_ < zero); // is top oriented?
+        bool inward_ = (zero < hypervolume_); // is top oriented?
         auto const vbeg = basis_.cbegin();
         auto const vend = basis_.cend();
         for (auto exclusive = vend; exclusive != vbeg; --exclusive) {
             size_type const newfacet = facets_.size();
             facets_.emplace_back(vbeg, exclusive, vend);
             facet & facet_ = facets_.back();
-            outward_ = !outward_;
-            if (outward_) {
+            inward_ = !inward_;
+            if (inward_) {
                 std::swap(facet_.vertices_.front(),
                           facet_.vertices_.back());
             }
             set_hyperplane_equation(facet_);
-            ordered_.emplace_back(facet_.vertices_.cbegin(),
-                                  facet_.vertices_.cend());
+            ordered_.emplace_back(facet_.vertices_.cbegin(), facet_.vertices_.cend());
             rank(partition(facet_, internal_set_), newfacet);
         }
         { // adjacency
