@@ -2,7 +2,6 @@
 
 #include <vector>
 #include <deque>
-#include <queue>
 #include <set>
 #include <map>
 #include <list>
@@ -184,8 +183,9 @@ public :
         normal_type normal_; // components of normalized normal vector
         G D; // distance of a hyperplane from the origin
 
-        template< typename InputIterator >
-        facet(InputIterator first, InputIterator mid, InputIterator last)
+        facet(typename point_list::const_iterator first,
+              typename point_list::const_iterator mid,
+              typename point_list::const_iterator last)
             : vertices_(first, std::prev(mid))
         {
             vertices_.insert(vertices_.end(), mid, last);
@@ -221,10 +221,10 @@ private : // geometry and basic operation on geometric primitives
 
     using vertices_sets_type = std::deque< point_set >;
     using facets_type = std::deque< size_type >;
-    using facets_queue = std::priority_queue< size_type, facets_type >;
+    using facet_set_desc = std::set< size_type, std::greater< size_type > >;
 
     vertices_sets_type ordered_; // ordered, but not oriented vertices of facets
-    facets_queue removed_facets_;
+    facet_set_desc removed_facets_;
 
     void
     set_hyperplane_equation(facet & _facet)
@@ -262,8 +262,9 @@ private : // geometry and basic operation on geometric primitives
                                   facet_.vertices_.cend());
             return f;
         } else {
-            size_type const f = removed_facets_.top();
-            removed_facets_.pop();
+            auto const rend = std::prev(removed_facets_.end());
+            size_type const f = *rend;
+            removed_facets_.erase(rend);
             facet & facet_ = facets_[f];
             facet_.vertices_ = std::move(_vertices);
             facet_.neighbours_ = {_neighbour};
@@ -277,7 +278,7 @@ private : // geometry and basic operation on geometric primitives
     void
     remove_facet(size_type const _facet)
     {
-        removed_facets_.push(_facet);
+        removed_facets_.emplace(_facet);
         facets_[_facet].coplanar_.clear();
         ordered_[_facet].clear();
     }
@@ -590,9 +591,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         ordered_.shrink_to_fit();
         {
             size_type source_ = facets_.size();
-            while (!removed_facets_.empty()) {
-                size_type const destination_ = removed_facets_.top();
-                removed_facets_.pop();
+            for (size_type const destination_ : removed_facets_) {
                 if (destination_ != --source_) {
                     facet & facet_ = facets_[destination_];
                     facet_ = std::move(facets_.back());
