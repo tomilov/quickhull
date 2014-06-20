@@ -1,9 +1,8 @@
 #pragma once
 
-#include <ext/mt_allocator.h>
-
 #include <vector>
 #include <deque>
+#include <queue>
 #include <set>
 #include <map>
 #include <list>
@@ -39,7 +38,7 @@ private : // math (simple functions, matrices, etc)
     }
 
     using row_type = std::valarray< G >;
-    using matrix_type = std::vector< row_type, __gnu_cxx::__mt_alloc< row_type > >;
+    using matrix_type = std::vector< row_type >;
 
     matrix_type matrix_;
     matrix_type shadow_matrix_;
@@ -96,7 +95,7 @@ private : // math (simple functions, matrices, etc)
     G
     det(size_type const _size) // based on LU factorization
     {
-        G det_(1);
+        G det_ = one;
         for (size_type i = 0; i < _size; ++i) {
             size_type p_ = i;
             G max_ = abs(matrix_[p_][i]);
@@ -142,10 +141,10 @@ private : // math (simple functions, matrices, etc)
 
 public :
 
-    using point_array = std::vector< size_type, __gnu_cxx::__mt_alloc< size_type > >;
-    using point_deque = std::deque< size_type, __gnu_cxx::__mt_alloc< size_type > >;
-    using point_list = std::list< size_type, __gnu_cxx::__mt_alloc< size_type > >;
-    using point_set = std::set< size_type, std::less< size_type >, __gnu_cxx::__mt_alloc< size_type > >;
+    using point_array = std::vector< size_type >;
+    using point_deque = std::deque< size_type >;
+    using point_list = std::list< size_type >;
+    using point_set = std::set< size_type >;
 
     points_type const & points_;
     point_list internal_set_;
@@ -169,12 +168,12 @@ public :
 
     struct facet;
 
-    using facet_set = std::set< size_type, std::less< size_type >, __gnu_cxx::__mt_alloc< size_type > >;
+    using facet_set = std::set< size_type >;
 
     struct facet // (d - 1)-dimensional faces
     {
 
-        using normal_type = std::vector< G, __gnu_cxx::__mt_alloc< G > >;
+        using normal_type = std::vector< G >;
 
         point_array vertices_; // d points : oriented
         facet_set neighbours_;
@@ -214,17 +213,18 @@ public :
 
     };
 
-    using facets_storage_type = std::deque< facet, __gnu_cxx::__mt_alloc< facet > >;
+    using facets_storage_type = std::deque< facet >;
 
     facets_storage_type facets_;
 
 private : // geometry and basic operation on geometric primitives
 
-    using vertices_sets_type = std::deque< point_set, __gnu_cxx::__mt_alloc< point_set > >;
-    using facets_type = std::deque< size_type, __gnu_cxx::__mt_alloc< size_type > >;
+    using vertices_sets_type = std::deque< point_set >;
+    using facets_type = std::deque< size_type >;
+    using facets_queue = std::priority_queue< size_type, facets_type >;
 
     vertices_sets_type ordered_; // ordered, but not oriented vertices of facets
-    facets_type removed_facets_;
+    facets_queue removed_facets_;
 
     void
     set_hyperplane_equation(facet & _facet)
@@ -233,7 +233,7 @@ private : // geometry and basic operation on geometric primitives
             std::copy_n(std::begin(points_[_facet.vertices_[row]]), dimension_, std::begin(shadow_matrix_[row]));
         }
         transpose();
-        G N(0);
+        G N = zero;
         for (size_type i = 0; i < dimension_; ++i) {
             restore_matrix(i);
             G n = det(dimension_);
@@ -262,8 +262,8 @@ private : // geometry and basic operation on geometric primitives
                                   facet_.vertices_.cend());
             return f;
         } else {
-            size_type const f = removed_facets_.back();
-            removed_facets_.pop_back();
+            size_type const f = removed_facets_.top();
+            removed_facets_.pop();
             facet & facet_ = facets_[f];
             facet_.vertices_ = std::move(_vertices);
             facet_.neighbours_ = {_neighbour};
@@ -277,7 +277,7 @@ private : // geometry and basic operation on geometric primitives
     void
     remove_facet(size_type const _facet)
     {
-        removed_facets_.push_back(_facet);
+        removed_facets_.push(_facet);
         facets_[_facet].coplanar_.clear();
         ordered_[_facet].clear();
     }
@@ -330,9 +330,9 @@ private : // geometry and basic operation on geometric primitives
         G hypervolume_ = hypervolume(_to, *it);
         auto furthest = it;
         while (++it != end) {
-            G const o_ = hypervolume(_to, *it);
-            if (abs(hypervolume_) < abs(o_)) {
-                hypervolume_ = o_;
+            G const v_ = hypervolume(_to, *it);
+            if (abs(hypervolume_) < abs(v_)) {
+                hypervolume_ = v_;
                 furthest = it;
             }
         }
@@ -342,8 +342,8 @@ private : // geometry and basic operation on geometric primitives
         return hypervolume_;
     }
 
-    using ranking_type = std::multimap< G, size_type, std::less< G >, __gnu_cxx::__mt_alloc< std::pair< G const, size_type > > >;
-    using ranking_meta_type = std::map< size_type, typename ranking_type::iterator, std::less< size_type >, __gnu_cxx::__mt_alloc< std::pair< size_type const, typename ranking_type::iterator > > >;
+    using ranking_type = std::multimap< G, size_type >;
+    using ranking_meta_type = std::map< size_type, typename ranking_type::iterator >;
 
     ranking_type ranking_;
     ranking_meta_type ranking_meta_;
@@ -383,7 +383,7 @@ private : // geometry and basic operation on geometric primitives
     {
         auto it = _points.begin();
         auto const end = _points.end();
-        G distance_(0);
+        G distance_ = zero;
         while (it != end) {
             auto const next = std::next(it);
             size_type const p = *it;
@@ -466,16 +466,18 @@ public : // largest possible simplex heuristic, convex hull algorithm
         std::iota(internal_set_.begin(), internal_set_.end(), 0);
         point_list basis_;
         basis_.splice(basis_.end(), internal_set_, internal_set_.begin());
-        for (size_type i = 0; i < dimension_; ++i) {
-            G const hypervolume_ = steal_best(internal_set_, basis_);
-            if (!(eps < abs(hypervolume_))) {
+        if (!(eps < abs(steal_best(internal_set_, basis_)))) {
+            return basis_; // can't find linearly independent point
+        }
+        internal_set_.splice(internal_set_.end(), basis_, basis_.begin()); // rejudge 0-indexed point
+        for (size_type i = 1; i < dimension_; ++i) {
+            if (!(eps < abs(steal_best(internal_set_, basis_)))) {
                 return basis_; // can't find linearly independent point
             }
         }
-        assert(basis_.size() == dimension_ + 1);
-        internal_set_.splice(internal_set_.end(), basis_, basis_.begin()); // rejudge 0-indexed point
-        assert(basis_.size() == dimension_);
+        assert(basis_.size() == dimension_); // facet
         G const hypervolume_ = steal_best(internal_set_, basis_);
+        assert(basis_.size() == dimension_ + 1); // simplex
         if (!(eps < abs(hypervolume_))) {
             return basis_; // can't find linearly independent point
         }
@@ -496,7 +498,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
                                   facet_.vertices_.cend());
             rank(partition(facet_, internal_set_), newfacet);
         }
-        assert(dimension_ + 1 == facets_.size()); // simplex
         { // adjacency
             for (size_type i = 0; i < dimension_; ++i) {
                 facet_set & neighbours_ = facets_[i].neighbours_;
@@ -513,7 +514,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
     create_convex_hull()
     {
         point_list outside_set_;
-        facet_set visited_; // invisible (over the horizon) facets
+        facet_set visited_;
         facet_set viewable_;
         facet_set visible_facets_;
         auto const vfend = visible_facets_.end();
@@ -528,6 +529,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             point_type const & apex_ = points_[apex];
             visible_facets_ = {best_facet};
             { // find visible facets
+                assert(visited_.empty());
                 viewable_ = best_facet_.neighbours_;
                 while (!viewable_.empty()) {
                     auto const first = viewable_.begin();
@@ -545,8 +547,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 }
                 visited_.clear();
             }
-            // the boundary of visible facets is the set of horizon ridges
-            // Each ridge signifies the adjacency of two facets.
             assert(newfacets_.empty());
             for (size_type const visible_facet : visible_facets_) {
                 facet & visible_facet_ = facets_[visible_facet];
@@ -556,21 +556,22 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 unrank(visible_facet);
                 remove_facet(visible_facet);
                 for (size_type const neighbour : neighbours_) {
-                    if (visible_facets_.find(neighbour) == vfend) { // neighbour is not visible
-                        // replace visible facet became internal with newly created facet in neighbours set
+                    if (visible_facets_.find(neighbour) == vfend) {
                         facet & horizon_facet_ = facets_[neighbour];
                         point_set const & horizon_ = ordered_[neighbour];
-                        assert(ridge_.empty());
-                        ridge_.reserve(dimension_);
-                        auto const hend = horizon_.cend();
-                        for (size_type const vertex : vertices_) { // facets intersection with keeping of points order as in visible facet
-                            if (horizon_.find(vertex) == hend) {
-                                ridge_.push_back(apex); // insert furthest point instead of inner point of visible facet
-                            } else {
-                                ridge_.push_back(vertex);
+                        {
+                            assert(ridge_.empty());
+                            ridge_.reserve(dimension_);
+                            auto const hend = horizon_.cend();
+                            for (size_type const vertex : vertices_) { // facets intersection with keeping of points order as it is in visible facet
+                                if (horizon_.find(vertex) == hend) {
+                                    ridge_.push_back(apex);
+                                } else {
+                                    ridge_.push_back(vertex);
+                                }
                             }
+                            assert(ridge_.size() == dimension_); // facet
                         }
-                        assert(ridge_.size() == dimension_);
                         size_type const newfacet = add_facet(std::move(ridge_), neighbour);
                         newfacets_.push_back(newfacet);
                         horizon_facet_.neighbours_.erase(visible_facet);
@@ -586,11 +587,24 @@ public : // largest possible simplex heuristic, convex hull algorithm
             internal_set_.splice(internal_set_.end(), outside_set_);
         }
         ordered_.clear();
-        while (!removed_facets_.empty()) {
-            size_type const empty_ = removed_facets_.back();
-            removed_facets_.pop_back();
-            facets_[empty_] = std::move(facets_.back());
-            facets_.pop_back();
+        ordered_.shrink_to_fit();
+        {
+            size_type source_ = facets_.size();
+            while (!removed_facets_.empty()) {
+                size_type const destination_ = removed_facets_.top();
+                removed_facets_.pop();
+                if (destination_ != --source_) {
+                    facet & facet_ = facets_[destination_];
+                    facet_ = std::move(facets_.back());
+                    for (size_type const neighbour : facet_.neighbours_) {
+                        facet_set & neighbours_ = facets_[neighbour].neighbours_;
+                        neighbours_.erase(source_);
+                        neighbours_.insert(destination_);
+                    }
+                }
+                facets_.pop_back();
+            }
+            facets_.shrink_to_fit();
         }
         return true;
     }

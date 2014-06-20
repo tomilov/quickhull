@@ -94,7 +94,7 @@ main(int argc, char * argv[])
     auto const & facets_ = convex_hull_.facets_;
     size_type const facets_count_ = facets_.size();
     std::cout << "number of facets: " << facets_count_ << std::endl;
-#if 0
+#if 1
     std::ofstream ofs_;
     ofs_.open("script.txt"); // gnuplot> load 'script.txt'
     if (!ofs_.is_open()) {

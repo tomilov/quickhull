@@ -22,8 +22,6 @@ CONFIG(debug, debug|release) {
 
 QMAKE_CXXFLAGS_DEBUG += -fno-default-inline -fno-inline
 QMAKE_LFLAGS_DEBUG   += -fno-default-inline -fno-inline
-QMAKE_CXXFLAGS_RELEASE += -pg -g3 -ggdb
-QMAKE_LFLAGS_RELEASE   += -pg -g3 -ggdb
 
 win32 {
     CONFIG += console
