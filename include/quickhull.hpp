@@ -288,7 +288,7 @@ private : // geometry and basic operation on geometric primitives
     // http://math.stackexchange.com/questions/822741/
     G
     hypervolume(point_list const & _vertices, point_type const & _apex)
-    { // rows_-dimensional oriented (but non-negative value for subspaces) hypervolume of corresponding parallelotope
+    {
         size_type const rows_ = _vertices.size();
         assert(!(dimension_ < rows_));
         row_type & origin_ = shadow_matrix_.back();
@@ -302,9 +302,9 @@ private : // geometry and basic operation on geometric primitives
         for (size_type row = 0; row < rows_; ++row) { // vectorize
             matrix_[row] -= origin_;
         }
-        if (rows_ == dimension_) {
+        if (rows_ == dimension_) { // oriented
             return det();
-        } else {
+        } else { // non-oriented
             square_matrix(rows_);
             using std::sqrt;
             return sqrt(det(shadow_matrix_, rows_));
@@ -366,7 +366,7 @@ private : // geometry and basic operation on geometric primitives
     get_furthest() const
     {
         if (ranking_.empty()) {
-            return facets_.size();
+            return facets_.size(); // special value
         } else {
             auto const r = std::prev(ranking_.cend());
             return r->second;
@@ -485,8 +485,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
             facet & facet_ = facets_.back();
             inward_ = !inward_;
             if (inward_) {
-                std::swap(facet_.vertices_.front(),
-                          facet_.vertices_.back());
+                using std::swap;
+                swap(facet_.vertices_.front(),
+                     facet_.vertices_.back());
             }
             set_hyperplane_equation(facet_);
             ordered_.emplace_back(facet_.vertices_.cbegin(), facet_.vertices_.cend());
@@ -568,8 +569,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         }
                         size_type const newfacet = add_facet(std::move(ridge_), neighbour);
                         newfacets_.push_back(newfacet);
-                        horizon_facet_.neighbours_.erase(visible_facet);
-                        horizon_facet_.neighbours_.insert(horizon_facet_.neighbours_.end(), newfacet);
+                        facet_set & horizon_neighbours_ = horizon_facet_.neighbours_;
+                        horizon_neighbours_.erase(visible_facet);
+                        horizon_neighbours_.insert(horizon_neighbours_.end(), newfacet);
                     }
                 }
             }
