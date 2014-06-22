@@ -83,8 +83,10 @@ private : // math (simple functions, matrices, etc)
         for (size_type row = 0; row < _size; ++row) {
             row_type & lhs_ = shadow_matrix_[row];
             row_type const & row_ = matrix_[row];
+            auto const rbeg = std::begin(row_);
+            auto const rend = std::end(row_);
             for (size_type col = 0; col < _size; ++col) {
-                lhs_[col] = std::inner_product(std::begin(row_), std::end(row_), std::begin(matrix_[col]), zero);
+                lhs_[col] = std::inner_product(rbeg, rend, std::begin(matrix_[col]), zero);
             }
         }
     }
@@ -171,7 +173,7 @@ public :
 
     using facet_set = std::set< size_type >;
 
-    struct facet // (d - 1)-dimensional faces
+    struct facet // (d - 1)-dimensional face
     {
 
         using normal_type = std::vector< G >;
@@ -179,18 +181,18 @@ public :
         point_array vertices_; // d points : oriented
         facet_set neighbours_;
         point_list outside_set_; // if not empty, then first point is furthest from this facet
-        point_deque coplanar_;
+        point_deque coplanar_; // coplanar points
 
         // hyperplane equation
         normal_type normal_; // components of normalized normal vector
         G D; // distance of a hyperplane from the origin
 
         facet(typename point_list::const_iterator first,
-              typename point_list::const_iterator mid,
+              typename point_list::const_iterator middle,
               typename point_list::const_iterator last)
-            : vertices_(first, std::prev(mid))
+            : vertices_(first, std::prev(middle))
         {
-            vertices_.insert(vertices_.end(), mid, last);
+            vertices_.insert(vertices_.end(), middle, last);
             normal_.resize(vertices_.size());
         }
 
@@ -242,12 +244,13 @@ private : // geometry and basic operation on geometric primitives
             N += n * n;
             _facet.normal_[i] = std::move(n);
         }
+        assert(eps < N);
         using std::sqrt;
-        N = sqrt(N);
+        N = one / sqrt(N);
         restore_matrix();
-        _facet.D = -det() / N;
+        _facet.D = -det() * N;
         for (size_type i = 0; i < dimension_; ++i) {
-            _facet.normal_[i] /= N;
+            _facet.normal_[i] *= N;
         }
     }
 
@@ -384,7 +387,7 @@ private : // geometry and basic operation on geometric primitives
             size_type const p = *it;
             G const d_ = _facet.distance(points_[p]);
             if (eps < d_) {
-                if (_facet.outside_set_.empty() || (distance_ < d_)) {
+                if ((distance_ < d_) || _facet.outside_set_.empty()) {
                     distance_ = d_;
                     _facet.outside_set_.push_front(p);
                 } else {
@@ -409,43 +412,49 @@ private : // geometry and basic operation on geometric primitives
             auto const lbeg = first_.cbegin();
             auto const lend = first_.cend();
             facet & first_facet_ = facets_[f];
-            for (auto second = std::next(first); second != nend; ++second) {
-                size_type const s = *second;
-                point_set & second_ = ordered_[s];
-                auto const rend = second_.cend();
-                auto r = second_.cbegin();
-                auto l = lbeg;
-                bool lgood = false;
-                bool rgood = false;
-                while ((l != lend) && (r != rend)) {
-                    size_type const left = *l;
-                    size_type const right = *r;
-                    if (left < right) {
-                        if (lgood) {
-                            lgood = false;
-                            break;
-                        } else {
-                            lgood = true;
-                        }
-                        ++l;
-                    } else {
-                        if (right < left) {
-                            if (rgood) {
+            size_type neighbours_count_ = first_facet_.neighbours_.size();
+            if (neighbours_count_ < dimension_) {
+                for (auto second = std::next(first); second != nend; ++second) {
+                    size_type const s = *second;
+                    point_set & second_ = ordered_[s];
+                    auto const rend = second_.cend();
+                    auto r = second_.cbegin();
+                    auto l = lbeg;
+                    bool lgood = false;
+                    bool rgood = false;
+                    while ((l != lend) && (r != rend)) {
+                        size_type const left = *l;
+                        size_type const right = *r;
+                        if (left < right) {
+                            if (lgood) {
                                 lgood = false;
                                 break;
                             } else {
-                                rgood = true;
+                                lgood = true;
                             }
-                        } else {
                             ++l;
+                        } else {
+                            if (right < left) {
+                                if (rgood) {
+                                    lgood = false;
+                                    break;
+                                } else {
+                                    rgood = true;
+                                }
+                            } else {
+                                ++l;
+                            }
+                            ++r;
                         }
-                        ++r;
                     }
-                }
-                if (lgood != ((l != lend) && (++l == lend))) {
-                    if (rgood != ((r != rend) && (++r == rend))) {
-                        first_facet_.neighbours_.insert(s);
-                        facets_[s].neighbours_.insert(f);
+                    if (lgood != ((l != lend) && (++l == lend))) {
+                        if (rgood != ((r != rend) && (++r == rend))) {
+                            first_facet_.neighbours_.insert(s);
+                            facets_[s].neighbours_.insert(f);
+                            if (!(++neighbours_count_ < dimension_)) {
+                                break;
+                            }
+                        }
                     }
                 }
             }
