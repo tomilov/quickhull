@@ -41,7 +41,7 @@ main(int argc, char * argv[])
         std::cerr << "no count at second line" << std::endl;
         return EXIT_FAILURE;
     }
-    using G = double;
+    using G = long double;
     using point_type = std::valarray< G >;
     using points_type = std::deque< point_type >;
     size_type const count_ = std::stoll(line_);
@@ -82,13 +82,9 @@ main(int argc, char * argv[])
         }
         {
             steady_clock::time_point const start = steady_clock::now();
-            bool const success = convex_hull_.create_convex_hull();
+            convex_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
             std::cout << "qh time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
-            if (!success) {
-                std::cerr << "cant create a simplex" << std::endl;
-                return EXIT_FAILURE;
-            }
         }
     }
     auto const & facets_ = convex_hull_.facets_;

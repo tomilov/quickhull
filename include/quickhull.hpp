@@ -26,7 +26,6 @@ struct convex_hull
 
 private : // math (simple functions, matrices, etc)
 
-    G const eps = G(0);
     G const zero = G(0);
     G const one = G(1);
 
@@ -153,13 +152,16 @@ public :
 
     points_type const & points_;
     point_list internal_set_;
+    G const eps;
 
-    convex_hull(size_type const _dimension, points_type const & _points)
+    convex_hull(size_type const _dimension, points_type const & _points,
+                G const & _eps = std::numeric_limits< G >::epsilon())
         : dimension_(_dimension)
         , matrix_(_dimension)
         , shadow_matrix_(_dimension)
         , minor_(_dimension - 1)
         , points_(_points)
+        , eps(_eps)
     {
         size_type const minor_size_ = dimension_ - 1;
         for (size_type row = 0; row < minor_size_; ++row) {
@@ -176,7 +178,7 @@ public :
     struct facet // (d - 1)-dimensional face
     {
 
-        using normal_type = std::vector< G >;
+        using normal_type = std::valarray< G >;
 
         point_array vertices_; // d points : oriented
         facet_set neighbours_;
@@ -185,7 +187,7 @@ public :
 
         // hyperplane equation
         normal_type normal_; // components of normalized normal vector
-        G D; // distance of a hyperplane from the origin
+        G D; // distance fromt the origin to the hyperplane
 
         facet(typename point_list::const_iterator first,
               typename point_list::const_iterator middle,
@@ -206,13 +208,13 @@ public :
         G
         distance(point_type const & _point) const
         {
-            return std::inner_product(normal_.cbegin(), normal_.cend(), std::begin(_point), D);
+            return std::inner_product(std::begin(normal_), std::end(normal_), std::begin(_point), D);
         }
 
         G
         cos_of_dihedral_angle(facet const & _other) const // for faces merging in the future
         {
-            return std::inner_product(normal_.cbegin(), normal_.cend(), _other.normal_.cbegin(), zero);
+            return std::inner_product(std::begin(normal_), std::end(normal_), std::begin(_other.normal_), zero);
         }
 
     };
@@ -249,9 +251,7 @@ private : // geometry and basic operation on geometric primitives
         N = one / sqrt(N);
         restore_matrix();
         _facet.D = -det() * N;
-        for (size_type i = 0; i < dimension_; ++i) {
-            _facet.normal_[i] *= N;
-        }
+        _facet.normal_ *= N;
     }
 
     size_type
@@ -283,7 +283,7 @@ private : // geometry and basic operation on geometric primitives
     void
     remove_facet(size_type const _facet)
     {
-        removed_facets_.emplace(_facet);
+        removed_facets_.insert(_facet);
         facets_[_facet].coplanar_.clear();
         ordered_[_facet].clear();
     }
@@ -466,6 +466,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
     point_list
     create_simplex()
     {
+        assert(dimension_ < points_.size());
         internal_set_.resize(points_.size());
         std::iota(internal_set_.begin(), internal_set_.end(), 0);
         point_list basis_;
@@ -514,7 +515,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         return basis_;
     }
 
-    bool
+    void
     create_convex_hull()
     {
         point_list outside_set_;
@@ -609,7 +610,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
             facets_.shrink_to_fit();
         }
-        return true;
     }
 
 };
