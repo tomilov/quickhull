@@ -43,23 +43,23 @@ main(int argc, char * argv[])
     }
     using G = long double;
     using point_type = std::valarray< G >;
-    using points_type = std::deque< point_type >;
+    using points_type = std::valarray< point_type >;
     size_type const count_ = std::stoll(line_);
-    points_type points_;
+    points_type points_(count_);
     std::istringstream iss;
-    while (!!std::getline(ifs_, line_)) {
-        points_.emplace_back(dim_);
-        iss.str(line_);
-        std::copy_n(std::istream_iterator< G >(iss), dim_, std::begin(points_.back()));
-        if (!iss) {
-            std::cerr << "bad value faced at line " << points_.size() << " of data" << std::endl;
+    for (size_type i = 0; i < count_; ++i) {
+        if (!std::getline(ifs_, line_)) {
+            std::cerr << "io: line count error" << std::endl;
             return EXIT_FAILURE;
         }
-    }
-    assert(points_.size() == count_);
-    if (count_ != points_.size()) {
-        std::cerr << "input file format error" << std::endl;
-        return EXIT_FAILURE;
+        point_type & point_ = points_[i];
+        point_.resize(dim_);
+        iss.str(line_);
+        std::copy_n(std::istream_iterator< G >(iss), dim_, std::begin(point_));
+        if (!iss) {
+            std::cerr << "bad value at line " << points_.size() << " of data" << std::endl;
+            return EXIT_FAILURE;
+        }
     }
     std::cout.rdbuf()->pubsetbuf(nullptr, 0);
     std::cout << "D = " << dim_ << std::endl;
