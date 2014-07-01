@@ -482,10 +482,10 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         assert(basis_.size() == dimension_); // facet
         G const hypervolume_ = steal_best(internal_set_, basis_);
-        assert(basis_.size() == dimension_ + 1); // simplex
         if (!(eps < abs(hypervolume_))) {
             return basis_; // can't find linearly independent point
         }
+        assert(basis_.size() == dimension_ + 1); // simplex
         bool inward_ = (zero < hypervolume_); // is top oriented?
         auto const vbeg = basis_.cbegin();
         auto const vend = basis_.cend();
