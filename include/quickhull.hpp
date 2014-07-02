@@ -14,7 +14,7 @@
 #include <cassert>
 
 template< typename points_type >
-struct convex_hull
+struct quick_hull
 {
 
     using size_type = std::size_t;
@@ -154,7 +154,7 @@ public :
     point_list internal_set_;
     G const eps;
 
-    convex_hull(size_type const _dimension, points_type const & _points,
+    quick_hull(size_type const _dimension, points_type const & _points,
                 G const & _eps = std::numeric_limits< G >::epsilon())
         : dimension_(_dimension)
         , matrix_(_dimension)

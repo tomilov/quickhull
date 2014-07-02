@@ -64,15 +64,15 @@ main(int argc, char * argv[])
     std::cout.rdbuf()->pubsetbuf(nullptr, 0);
     std::cout << "D = " << dim_ << std::endl;
     std::cout << "N = " << count_ << std::endl;
-    using H = convex_hull< points_type >;
-    H convex_hull_(dim_, points_);
+    using H = quick_hull< points_type >;
+    H quick_hull_(dim_, points_);
     {
         using std::chrono::duration_cast;
         using std::chrono::microseconds;
         using std::chrono::steady_clock;
         {
             steady_clock::time_point const start = steady_clock::now();
-            size_type const basis_size_ = convex_hull_.create_simplex().size();
+            size_type const basis_size_ = quick_hull_.create_simplex().size();
             steady_clock::time_point const end = steady_clock::now();
             std::cout << "simplex time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
             if (basis_size_ != dim_ + 1) {
@@ -82,15 +82,15 @@ main(int argc, char * argv[])
         }
         {
             steady_clock::time_point const start = steady_clock::now();
-            convex_hull_.create_convex_hull();
+            quick_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
             std::cout << "qh time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
         }
     }
-    auto const & facets_ = convex_hull_.facets_;
+    auto const & facets_ = quick_hull_.facets_;
     size_type const facets_count_ = facets_.size();
     std::cout << "number of facets: " << facets_count_ << std::endl;
-#if 0
+#if 1
     std::ofstream ofs_;
     ofs_.open("script.txt"); // gnuplot> load 'script.txt'
     if (!ofs_.is_open()) {
