@@ -18,26 +18,25 @@
 int
 main(int argc, char * argv[])
 {
-    if (argc < 2) {
-        std::cerr << "error: argc == "  << argc << std::endl;
-        return EXIT_FAILURE;
-    }
     using size_type = std::size_t;
 
     std::ifstream ifs_;
-    ifs_.open(argv[1]); // rbox n D3 s 100 > points.txt
-    if (!ifs_.is_open()) {
-        std::cerr << "file is not open" << std::endl;
-        return EXIT_FAILURE;
+    if (!(argc < 2)) {
+        ifs_.open(argv[1]); // rbox n D3 s 100 > points.txt
+        if (!ifs_.is_open()) {
+            std::cerr << "file is not open" << std::endl;
+            return EXIT_FAILURE;
+        }
     }
-    std::cout << "read file: " << argv[1] << std::endl;
+    std::istream & in_ = (argc < 2) ? std::cin : ifs_;
+    std::cout << "read file: " << ((argc < 2) ? "stdin" : argv[1]) << std::endl;
     std::string line_;
-    if (!std::getline(ifs_, line_)) {
+    if (!std::getline(in_, line_)) {
         std::cerr << "no dim at first line" << std::endl;
         return EXIT_FAILURE;
     }
     size_type const dim_ = std::stoll(line_);
-    if (!std::getline(ifs_, line_)) {
+    if (!std::getline(in_, line_)) {
         std::cerr << "no count at second line" << std::endl;
         return EXIT_FAILURE;
     }
@@ -48,7 +47,7 @@ main(int argc, char * argv[])
     points_type points_(count_);
     std::istringstream iss;
     for (size_type i = 0; i < count_; ++i) {
-        if (!std::getline(ifs_, line_)) {
+        if (!std::getline(in_, line_)) {
             std::cerr << "io: line count error" << std::endl;
             return EXIT_FAILURE;
         }

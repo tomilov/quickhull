@@ -466,8 +466,10 @@ public : // largest possible simplex heuristic, convex hull algorithm
     point_list
     create_simplex()
     {
-        assert(dimension_ < points_.size());
-        internal_set_.resize(points_.size());
+        assert(1 < dimension_);
+        size_type const size_ = points_.size();
+        assert(dimension_ < size_);
+        internal_set_.resize(size_);
         std::iota(internal_set_.begin(), internal_set_.end(), 0);
         point_list basis_;
         basis_.splice(basis_.end(), internal_set_, internal_set_.begin());
