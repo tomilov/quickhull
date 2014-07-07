@@ -40,7 +40,7 @@ main(int argc, char * argv[])
         std::cerr << "no count at second line" << std::endl;
         return EXIT_FAILURE;
     }
-    using G = long double;
+    using G = float;
     using point_type = std::valarray< G >;
     using points_type = std::valarray< point_type >;
     size_type const count_ = std::stoll(line_);
