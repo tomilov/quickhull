@@ -3,7 +3,9 @@
 #include <vector>
 #include <deque>
 #include <set>
+#include <unordered_set>
 #include <map>
+#include <unordered_map>
 #include <list>
 #include <valarray>
 #include <iterator>
@@ -174,6 +176,7 @@ public :
     }
 
     using facet_set = std::set< size_type >;
+    using facet_unordered_set = std::unordered_set< size_type >;
 
     struct facet // (d - 1)-dimensional face
     {
@@ -341,7 +344,7 @@ private : // geometry and basic operation on geometric primitives
     }
 
     using ranking_type = std::multimap< G, size_type >;
-    using ranking_meta_type = std::map< size_type, typename ranking_type::iterator >;
+    using ranking_meta_type = std::unordered_map< size_type, typename ranking_type::iterator >;
 
     ranking_type ranking_;
     ranking_meta_type ranking_meta_;
@@ -522,7 +525,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
     {
         point_list outside_set_;
         facet_set visited_;
-        facet_set viewable_;
+        facet_unordered_set viewable_;
         facet_set visible_facets_;
         auto const vfend = visible_facets_.end();
         facet_set neighbours_;
@@ -537,7 +540,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
             visible_facets_ = {best_facet};
             { // find visible facets
                 assert(visited_.empty());
-                viewable_ = best_facet_.neighbours_;
+                assert(viewable_.empty());
+                viewable_.insert(best_facet_.neighbours_.cbegin(),
+                                 best_facet_.neighbours_.cend());
                 while (!viewable_.empty()) {
                     auto const first = viewable_.begin();
                     size_type const f = *first;
