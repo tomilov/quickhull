@@ -157,7 +157,7 @@ public :
     G const eps;
 
     quick_hull(size_type const _dimension, points_type const & _points,
-                G const & _eps = std::numeric_limits< G >::epsilon())
+               G const & _eps = std::numeric_limits< G >::epsilon())
         : dimension_(_dimension)
         , matrix_(_dimension)
         , shadow_matrix_(_dimension)
@@ -165,6 +165,7 @@ public :
         , points_(_points)
         , eps(_eps)
     {
+        assert(zero < _eps);
         size_type const minor_size_ = dimension_ - 1;
         for (size_type row = 0; row < minor_size_; ++row) {
             matrix_[row].resize(dimension_);
@@ -185,7 +186,7 @@ public :
 
         point_array vertices_; // d points : oriented
         facet_set neighbours_;
-        point_list outside_set_; // if not empty, then first point is furthest from this facet
+        point_deque outside_; // if not empty, then first point is furthest from this facet
         point_deque coplanar_; // coplanar points
 
         // hyperplane equation
@@ -390,11 +391,11 @@ private : // geometry and basic operation on geometric primitives
             size_type const p = *it;
             G const d_ = _facet.distance(points_[p]);
             if (eps < d_) {
-                if ((distance_ < d_) || _facet.outside_set_.empty()) {
+                if ((distance_ < d_) || _facet.outside_.empty()) {
                     distance_ = d_;
-                    _facet.outside_set_.push_front(p);
+                    _facet.outside_.push_front(p);
                 } else {
-                    _facet.outside_set_.push_back(p);
+                    _facet.outside_.push_back(p);
                 }
                 _points.erase(it);
             } else if (!(eps < abs(d_))) { // coplanar
@@ -523,7 +524,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
     void
     create_convex_hull()
     {
-        point_list outside_set_;
+        point_list outside_;
         facet_set visited_;
         facet_unordered_set viewable_;
         facet_set visible_facets_;
@@ -534,8 +535,8 @@ public : // largest possible simplex heuristic, convex hull algorithm
         point_array ridge_; // horizon ridge + furthest point = new facet
         for (size_type best_facet = get_furthest(); best_facet != facets_.size(); best_facet = get_furthest()) {
             facet & best_facet_ = facets_[best_facet];
-            size_type const apex = best_facet_.outside_set_.front();
-            best_facet_.outside_set_.pop_front();
+            size_type const apex = best_facet_.outside_.front();
+            best_facet_.outside_.pop_front();
             point_type const & apex_ = points_[apex];
             visible_facets_ = {best_facet};
             { // find visible facets
@@ -563,7 +564,8 @@ public : // largest possible simplex heuristic, convex hull algorithm
             for (size_type const visible_facet : visible_facets_) {
                 facet & visible_facet_ = facets_[visible_facet];
                 vertices_ = std::move(visible_facet_.vertices_);
-                outside_set_.splice(outside_set_.end(), visible_facet_.outside_set_);
+                outside_.insert(outside_.end(), visible_facet_.outside_.begin(), visible_facet_.outside_.end());
+                visible_facet_.outside_.clear();
                 neighbours_ = std::move(visible_facet_.neighbours_);
                 unrank(visible_facet);
                 remove_facet(visible_facet);
@@ -594,10 +596,10 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
             adjacency(newfacets_);
             for (size_type const newfacet : newfacets_) {
-                rank(partition(facets_[newfacet], outside_set_), newfacet);
+                rank(partition(facets_[newfacet], outside_), newfacet);
             }
             newfacets_.clear();
-            internal_set_.splice(internal_set_.end(), outside_set_);
+            internal_set_.splice(internal_set_.end(), outside_);
         }
         ordered_.clear();
         ordered_.shrink_to_fit();
