@@ -284,14 +284,6 @@ private : // geometry and basic operation on geometric primitives
         }
     }
 
-    void
-    remove_facet(size_type const _facet)
-    {
-        removed_facets_.insert(_facet);
-        facets_[_facet].coplanar_.clear();
-        ordered_[_facet].clear();
-    }
-
     // http://math.stackexchange.com/questions/822741/
     G
     hypervolume(point_list const & _vertices, point_type const & _apex)
@@ -568,7 +560,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 visible_facet_.outside_.clear();
                 neighbours_ = std::move(visible_facet_.neighbours_);
                 unrank(visible_facet);
-                remove_facet(visible_facet);
+                removed_facets_.insert(visible_facet);
+                visible_facet_.coplanar_.clear();
+                ordered_[visible_facet].clear();
                 for (size_type const neighbour : neighbours_) {
                     if (visible_facets_.find(neighbour) == vfend) {
                         facet & horizon_facet_ = facets_[neighbour];
