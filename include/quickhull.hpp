@@ -250,7 +250,6 @@ private : // geometry and basic operation on geometric primitives
             N += n * n;
             _facet.normal_[i] = std::move(n);
         }
-        assert(eps < N);
         using std::sqrt;
         N = one / sqrt(N);
         restore_matrix();
@@ -282,14 +281,6 @@ private : // geometry and basic operation on geometric primitives
                                facet_.vertices_.cend());
             return f;
         }
-    }
-
-    void
-    remove_facet(size_type const _facet)
-    {
-        removed_facets_.insert(_facet);
-        facets_[_facet].coplanar_.clear();
-        ordered_[_facet].clear();
     }
 
     // http://math.stackexchange.com/questions/822741/
@@ -370,7 +361,7 @@ private : // geometry and basic operation on geometric primitives
     }
 
     size_type
-    get_furthest() const
+    get_best_facet() const
     {
         if (ranking_.empty()) {
             return facets_.size(); // special value
@@ -533,7 +524,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         facets_type newfacets_;
         point_array vertices_;
         point_array ridge_; // horizon ridge + furthest point = new facet
-        for (size_type best_facet = get_furthest(); best_facet != facets_.size(); best_facet = get_furthest()) {
+        for (size_type best_facet = get_best_facet(); best_facet != facets_.size(); best_facet = get_best_facet()) {
             facet & best_facet_ = facets_[best_facet];
             size_type const apex = best_facet_.outside_.front();
             best_facet_.outside_.pop_front();
@@ -568,7 +559,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 visible_facet_.outside_.clear();
                 neighbours_ = std::move(visible_facet_.neighbours_);
                 unrank(visible_facet);
-                remove_facet(visible_facet);
+                removed_facets_.insert(visible_facet);
+                visible_facet_.coplanar_.clear();
+                ordered_[visible_facet].clear();
                 for (size_type const neighbour : neighbours_) {
                     if (visible_facets_.find(neighbour) == vfend) {
                         facet & horizon_facet_ = facets_[neighbour];
