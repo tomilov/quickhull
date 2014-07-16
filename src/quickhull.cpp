@@ -18,13 +18,13 @@ main(int argc, char * argv[])
 
     std::ifstream ifs_;
     if (!(argc < 2)) {
-        ifs_.open(argv[1]); // rbox D3 s 100 > points.txt
+        ifs_.open(argv[1]);
         if (!ifs_.is_open()) {
             std::cerr << "file is not open" << std::endl;
             return EXIT_FAILURE;
         }
     }
-    std::istream & in_ = (argc < 2) ? std::cin : ifs_;
+    std::istream & in_ = !!ifs_ ? ifs_ : std::cin;
     std::cout << "#read file: " << ((argc < 2) ? "stdin" : argv[1]) << '\n';
     std::string line_;
     if (!std::getline(in_, line_)) {
@@ -115,11 +115,11 @@ main(int argc, char * argv[])
     }
     }
     os_ << " '-' with points notitle, '-' with labels offset character 0, character 1 notitle";
-    for (std::size_t i = 0; i < facets_count_; ++i) {
+    for (size_type i = 0; i < facets_count_; ++i) {
         os_ << ", '-' with lines notitle";
     }
     os_ << ";\n";
-    for (std::size_t i = 0; i < count_; ++i) {
+    for (size_type i = 0; i < count_; ++i) {
         point_type const & point_ = points_[i];
         for (G const & coordinate_ : point_) {
             os_ << coordinate_ << ' ';
@@ -127,7 +127,7 @@ main(int argc, char * argv[])
         os_ << '\n';
     }
     os_ << "e\n";
-    for (std::size_t i = 0; i < count_; ++i) {
+    for (size_type i = 0; i < count_; ++i) {
         point_type const & point_ = points_[i];
         for (G const & coordinate_ : point_) {
             os_ << coordinate_ << ' ';
