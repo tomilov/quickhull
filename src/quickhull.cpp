@@ -9,10 +9,6 @@
 
 #include <cstdlib>
 #include <cstdio>
-
-#include <iostream>
-
-#include <cstdlib>
 #include <cassert>
 
 int
@@ -29,7 +25,7 @@ main(int argc, char * argv[])
         }
     }
     std::istream & in_ = (argc < 2) ? std::cin : ifs_;
-    std::cout << "read file: " << ((argc < 2) ? "stdin" : argv[1]) << std::endl;
+    std::cout << "#read file: " << ((argc < 2) ? "stdin" : argv[1]) << '\n';
     std::string line_;
     if (!std::getline(in_, line_)) {
         std::cerr << "bad file format" << std::endl;
@@ -40,10 +36,10 @@ main(int argc, char * argv[])
     iss >> dim_;
     {
         using char_type = typename std::string::value_type;
-        std::cout << "command line:";
+        std::cout << "#command line:";
         std::istreambuf_iterator< char_type > const ibeg(iss), iend;
         std::copy(ibeg, iend, std::ostreambuf_iterator< char_type >(std::cout));
-        std::cout << std::endl;
+        std::cout << '\n';
     }
     if (!std::getline(in_, line_)) {
         std::cerr << "no count at second line" << std::endl;
@@ -68,9 +64,9 @@ main(int argc, char * argv[])
             return EXIT_FAILURE;
         }
     }
-    std::cout.rdbuf()->pubsetbuf(nullptr, 0);
-    std::cout << "D = " << dim_ << std::endl;
-    std::cout << "N = " << count_ << std::endl;
+    //std::cout.rdbuf()->pubsetbuf(nullptr, 0);
+    std::cout << "#D = " << dim_ << '\n';
+    std::cout << "#N = " << count_ << '\n';
     using quick_hull_type = quick_hull< points_type >;
     quick_hull_type quick_hull_(dim_, points_);
     {
@@ -81,7 +77,7 @@ main(int argc, char * argv[])
             steady_clock::time_point const start = steady_clock::now();
             size_type const basis_size_ = quick_hull_.create_simplex().size();
             steady_clock::time_point const end = steady_clock::now();
-            std::cout << "simplex time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
+            std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
             if (basis_size_ != dim_ + 1) {
                 std::cerr << "cannot create a simplex" << std::endl;
                 return EXIT_FAILURE;
@@ -91,75 +87,68 @@ main(int argc, char * argv[])
             steady_clock::time_point const start = steady_clock::now();
             quick_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
-            std::cout << "qh time = " << duration_cast< microseconds >(end - start).count() << "us" << std::endl;
+            std::cout << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
         }
     }
     auto const & facets_ = quick_hull_.facets_;
     size_type const facets_count_ = facets_.size();
-    std::cout << "number of facets: " << facets_count_ << std::endl;
-#if 1
-    std::ofstream ofs_;
-    ofs_.open("script.txt"); // gnuplot> load 'script.txt'
-    if (!ofs_.is_open()) {
-        std::cerr << "output file cannot be truncated" << std::endl;
-        return EXIT_FAILURE;
-    }
-    ofs_ << "clear" << std::endl;
-    ofs_ << "set autoscale" << std::endl;
+    std::cout << "#number of facets: " << facets_count_ << std::endl;
+    std::ostream & os_ = std::cout;
+    os_ << "clear\n";
+    os_ << "set autoscale\n";
     switch (dim_) {
     case 1 : {
-        ofs_ << "plot";
+        os_ << "plot";
         break;
     }
     case 2 : {
-        ofs_ << "plot";
+        os_ << "plot";
         break;
     }
     case 3 : {
-        ofs_ << "splot";
+        os_ << "splot";
         break;
     }
     default : {
-        std::cerr << "dimensionality value (" << dim_ << ") is out of supported range" << std::endl;
+        std::cerr << "dimensionality value (" << dim_ << ") is out of supported range: cannot generate output" << std::endl;
         return EXIT_FAILURE;
     }
     }
-    ofs_ << " '-' with points notitle, '-' with labels offset character 0,character 1 notitle";
+    os_ << " '-' with points notitle, '-' with labels offset character 0, character 1 notitle";
     for (std::size_t i = 0; i < facets_count_; ++i) {
-        ofs_ << ", '-' with lines notitle";
+        os_ << ", '-' with lines notitle";
     }
-    ofs_ << ';' << std::endl;
+    os_ << ";\n";
     for (std::size_t i = 0; i < count_; ++i) {
         point_type const & point_ = points_[i];
         for (G const & coordinate_ : point_) {
-            ofs_ << coordinate_ << ' ';
+            os_ << coordinate_ << ' ';
         }
-        ofs_ << std::endl;
+        os_ << '\n';
     }
-    ofs_ << 'e' << std::endl;
+    os_ << "e\n";
     for (std::size_t i = 0; i < count_; ++i) {
         point_type const & point_ = points_[i];
         for (G const & coordinate_ : point_) {
-            ofs_ << coordinate_ << ' ';
+            os_ << coordinate_ << ' ';
         }
-        ofs_ << i << std::endl;
+        os_ << i << '\n';
     }
-    ofs_ << 'e' << std::endl;
+    os_ << "e\n";
     for (size_type i = 0; i < facets_count_; ++i) {
         auto const & vertices_ = facets_[i].vertices_;
         for (size_type const vertex_ : vertices_) {
             for (G const & coordinate_ : points_[vertex_]) {
-                ofs_ << coordinate_ << ' ';
+                os_ << coordinate_ << ' ';
             }
-            ofs_ << std::endl;
+            os_ << '\n';
         }
         point_type const & first_vertex_ = points_[vertices_.front()];
         for (G const & coordinate_ : first_vertex_) {
-            ofs_ << coordinate_ << ' ';
+            os_ << coordinate_ << ' ';
         }
-        ofs_ << std::endl;
-        ofs_ << 'e' << std::endl;
+        os_ << "\ne\n";
     }
-#endif
+    os_ << std::endl;
     return EXIT_SUCCESS;
 }

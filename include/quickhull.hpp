@@ -37,6 +37,12 @@ private : // math (simple functions, matrices, etc)
         return (_x < zero) ? -_x : _x;
     }
 
+    G
+    abs(G && _x) const
+    {
+        return (_x < zero) ? -std::move(_x) : std::move(_x);
+    }
+
     using row_type = std::valarray< G >;
     using matrix_type = std::vector< row_type >;
 
@@ -68,11 +74,11 @@ private : // math (simple functions, matrices, etc)
     restore_matrix(size_type const _identity) // load matrix from storage with replacing of _identity column with ones
     {
         for (size_type row = 0; row < dimension_; ++row) { // col
-            row_type & to_ = matrix_[row];
+            row_type & row_ = matrix_[row];
             if (row == _identity) {
-                to_ = one;
+                row_ = one;
             } else {
-                to_ = shadow_matrix_[row];
+                row_ = shadow_matrix_[row];
             }
         }
     }
@@ -186,7 +192,7 @@ public :
 
         point_array vertices_; // d points : oriented
         facet_set neighbours_;
-        point_deque outside_; // if not empty, then first point is furthest from this facet
+        point_deque outside_; // if empty, then is convex hull's facet, else the first point (i.e. outside_.front()) is the furthest point from this facet
         point_deque coplanar_; // coplanar points
 
         // hyperplane equation
@@ -227,7 +233,7 @@ public :
 
     facets_storage_type facets_;
 
-private : // geometry and basic operation on geometric primitives
+private : // geometry and basic operations on geometric primitives
 
     using vertices_sets_type = std::deque< point_set >;
     using facets_type = std::deque< size_type >;
@@ -300,9 +306,9 @@ private : // geometry and basic operation on geometric primitives
         for (size_type row = 0; row < rows_; ++row) { // vectorize
             matrix_[row] -= origin_;
         }
-        if (rows_ == dimension_) { // oriented
+        if (rows_ == dimension_) { // oriented hypervolume
             return det();
-        } else { // non-oriented
+        } else { // non-oriented rows_-dimensional measure
             square_matrix(rows_);
             using std::sqrt;
             return sqrt(det(shadow_matrix_, rows_));
