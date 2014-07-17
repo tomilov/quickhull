@@ -6,9 +6,10 @@
 #include <vector>
 #include <map>
 #include <random>
+#include <limits>
 
+#include <cmath>
 #include <cstdlib>
-#include <unistd.h>
 
 template< typename G >
 struct randombox
@@ -16,13 +17,23 @@ struct randombox
 
     using size_type = std::size_t;
 
+    G const eps = std::numeric_limits< G >::epsilon();
+    G const zero = G(0);
+    G const one = G(1);
+
     std::random_device rd_;
     using seed_type = typename std::random_device::result_type;
     seed_type seed_;
     std::mt19937_64 random_;
-    std::uniform_int_distribution< seed_type > U_;
-    using uparam_type = typename std::uniform_int_distribution< seed_type >::param_type;
+    std::uniform_int_distribution< seed_type > UI_;
+    using uint_param_type = typename std::uniform_int_distribution< seed_type >::param_type;
+    std::uniform_real_distribution< G > UR_; // uniform (0;1] ditribution
+    using ureal_param_type = typename std::uniform_real_distribution< G >::param_type;
     std::normal_distribution< G > N_; // N(0, 1) distribution
+
+    randombox()
+        : UR_(std::nextafter(zero, std::numeric_limits< G >::max()), std::nextafter(one, std::numeric_limits< G >::max()))
+    { ; }
 
     void
     set_seed(seed_type const _seed)
@@ -38,12 +49,9 @@ struct randombox
         random_.seed(seed_);
     }
 
-    G const eps = std::numeric_limits< G >::epsilon();
-    G const zero = G(0);
-    G const one = G(1);
-
     using point_type = std::valarray< G >;
     using points_type = std::vector< point_type >;
+    using mask_array_type = std::valarray< bool >;
 
     size_type dimension_ = 3;
     points_type points_;
@@ -136,19 +144,46 @@ struct randombox
     void
     add_sphere()
     {
+        uint_param_type const index_range_(0, dimension_ - 1);
+        uint_param_type const sign_range_(0, 1);
         point_type source_(dimension_);
         for (size_type i = 0; i < count_; ++i) {
             for (size_type j = 0; j < dimension_; ++j) {
                 source_[j] = N_(random_);
             }
-            points_.emplace_back(source_);
+            points_.push_back(source_);
             source_ *= source_;
             using std::sqrt;
             G norm_ = sqrt(source_.sum());
             point_type & destination_ = points_.back();
-            if (norm_ < eps) { // if generated random point is too close to the origin, then re-generate random ort
+            if (norm_ < eps) { // if generated random point is too close to the origin, then generate random +-ort instead
                 destination_ = zero;
-                destination_[U_(random_, uparam_type(1, dimension_)) - 1] = one;
+                destination_[UI_(random_, index_range_)] = (UI_(random_, sign_range_) == 0) ? one : -one;
+            } else {
+                destination_ *= (one / std::move(norm_));
+            }
+        }
+    }
+
+    void
+    add_unit_simplex()
+    {
+        for (size_type i = 0; i < count_; ++i) {
+            points_.emplace_back(dimension_);
+            point_type & destination_ = points_.back();
+            for (size_type j = 0; j < dimension_; ++j) {
+                destination_[j] = UR_(random_);
+            }
+            destination_ = std::log(destination_);
+            G norm_ = destination_.sum();
+            if (norm_ == -std::numeric_limits< G >::infinity()) { // if some of logarithms of generated values is -HUGE_VAL, then the correspoinding nonnormalized value is one
+                mask_array_type const ones_ = (destination_ == -std::numeric_limits< G >::infinity()); // store into std::valarray< bool > to prevent evaluations to being lazy
+                destination_[ones_] = one;
+                destination_[!ones_] = zero;
+                norm_ = destination_.sum(); // number of close-to-zero generated values, can be zero (if there just an overflow)
+            }
+            if (-eps < norm_) { // if generated random point is too close to the origin, then assume, that origin is good choise
+                destination_ = zero;
             } else {
                 destination_ *= (one / std::move(norm_));
             }
@@ -189,13 +224,15 @@ main(int ac, char * av[])
     {
         sphere,
         cube,
-        diamond
+        diamond,
+        unit_simplex,
     };
 
     std::map< std::string, geometrical_object > const gobject_map_{
-        {"sphere",  geometrical_object::sphere},
-        {"cube",    geometrical_object::cube},
-        {"diamond", geometrical_object::diamond},
+        {"sphere",       geometrical_object::sphere},
+        {"cube",         geometrical_object::cube},
+        {"diamond",      geometrical_object::diamond},
+        {"unit-simplex", geometrical_object::unit_simplex},
     };
 
     namespace po = boost::program_options;
@@ -218,7 +255,7 @@ main(int ac, char * av[])
             //("rotate,R", po::value< std::string >(), "rotate the data around the specified axis by the specified angle")
             ("seed", po::value< seed_type >(), "use specified value as random number seed")
             //("integer", "generate integer coordinates in specified integer bounding box")
-            ("add", po::value< std::string >(), "add specific object to the output. Possible object types: sphere, cube, diamond")
+            ("add", po::value< std::string >(), "add specific object to the output. Possible object types: sphere, cube, diamond, unit-simplex")
             ;
 
     po::positional_options_description positional_;
@@ -261,6 +298,10 @@ main(int ac, char * av[])
                 break;
             }
             case geometrical_object::diamond : {
+                break;
+            }
+            case geometrical_object::unit_simplex : {
+                randombox_.add_unit_simplex();
                 break;
             }
             default : {

@@ -20,35 +20,50 @@ main(int argc, char * argv[])
     if (!(argc < 2)) {
         ifs_.open(argv[1]);
         if (!ifs_.is_open()) {
-            std::cerr << "file is not open" << std::endl;
+            std::cerr << "cannot open the file" << std::endl;
             return EXIT_FAILURE;
         }
     }
-    std::istream & in_ = !!ifs_ ? ifs_ : std::cin;
+    std::istream & in_ = ifs_.is_open() ? ifs_ : std::cin;
     std::cout << "#read file: " << ((argc < 2) ? "stdin" : argv[1]) << '\n';
     std::string line_;
     if (!std::getline(in_, line_)) {
-        std::cerr << "bad file format" << std::endl;
+        std::cerr << "io: dimension line" << std::endl;
         return EXIT_FAILURE;
     }
-    size_type dim_;
-    std::istringstream iss(line_);
-    iss >> dim_;
+    std::istringstream iss_;
+    size_type dimension_;
     {
-        using char_type = typename std::string::value_type;
-        std::cout << "#command line:";
-        std::istreambuf_iterator< char_type > const ibeg(iss), iend;
-        std::copy(ibeg, iend, std::ostreambuf_iterator< char_type >(std::cout));
-        std::cout << '\n';
+        iss_.str(line_);
+        if (!(iss_ >> dimension_)) {
+            std::cerr << "io: dimension" << std::endl;
+            return EXIT_FAILURE;
+        }
+        {
+            using char_type = typename std::string::value_type;
+            std::cout << "#command line:";
+            std::istreambuf_iterator< char_type > const ibeg(iss_), iend;
+            std::copy(ibeg, iend, std::ostreambuf_iterator< char_type >(std::cout));
+            std::cout << '\n';
+        }
+        iss_.clear();
     }
     if (!std::getline(in_, line_)) {
-        std::cerr << "no count at second line" << std::endl;
+        std::cerr << "io: count line" << std::endl;
         return EXIT_FAILURE;
     }
     using G = float;
     using point_type = std::valarray< G >;
     using points_type = std::valarray< point_type >;
-    size_type const count_ = std::stoll(line_);
+    size_type count_;
+    {
+        iss_.str(line_);
+        if (!(iss_ >> count_)) {
+            std::cerr << "io: count" << std::endl;
+            return EXIT_FAILURE;
+        }
+        iss_.clear();
+    }
     points_type points_(count_);
     for (size_type i = 0; i < count_; ++i) {
         if (!std::getline(in_, line_)) {
@@ -56,19 +71,23 @@ main(int argc, char * argv[])
             return EXIT_FAILURE;
         }
         point_type & point_ = points_[i];
-        point_.resize(dim_);
-        iss.str(line_);
-        std::copy_n(std::istream_iterator< G >(iss), dim_, std::begin(point_));
-        if (!iss) {
-            std::cerr << "bad value at line " << points_.size() << " of data" << std::endl;
-            return EXIT_FAILURE;
+        point_.resize(dimension_);
+        {
+            iss_.str(line_);
+            for (size_type j = 0; j < dimension_; ++j) {
+                if (!(iss_ >> point_[j])) {
+                    std::cerr << "io: bad value at line " << j << " of data" << std::endl;
+                    return EXIT_FAILURE;
+                }
+            }
+            iss_.clear();
         }
     }
     //std::cout.rdbuf()->pubsetbuf(nullptr, 0);
-    std::cout << "#D = " << dim_ << '\n';
+    std::cout << "#D = " << dimension_ << '\n';
     std::cout << "#N = " << count_ << '\n';
     using quick_hull_type = quick_hull< points_type >;
-    quick_hull_type quick_hull_(dim_, points_);
+    quick_hull_type quick_hull_(dimension_, points_);
     {
         using std::chrono::duration_cast;
         using std::chrono::microseconds;
@@ -78,7 +97,7 @@ main(int argc, char * argv[])
             size_type const basis_size_ = quick_hull_.create_simplex().size();
             steady_clock::time_point const end = steady_clock::now();
             std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
-            if (basis_size_ != dim_ + 1) {
+            if (basis_size_ != dimension_ + 1) {
                 std::cerr << "cannot create a simplex" << std::endl;
                 return EXIT_FAILURE;
             }
@@ -96,7 +115,7 @@ main(int argc, char * argv[])
     std::ostream & os_ = std::cout;
     os_ << "clear\n";
     os_ << "set autoscale\n";
-    switch (dim_) {
+    switch (dimension_) {
     case 1 : {
         os_ << "plot";
         break;
@@ -110,7 +129,7 @@ main(int argc, char * argv[])
         break;
     }
     default : {
-        std::cerr << "dimensionality value (" << dim_ << ") is out of supported range: cannot generate output" << std::endl;
+        std::cerr << "dimensionality value (" << dimension_ << ") is out of supported range: cannot generate output" << std::endl;
         return EXIT_FAILURE;
     }
     }
