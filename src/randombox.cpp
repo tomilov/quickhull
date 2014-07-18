@@ -1,12 +1,14 @@
 #include <boost/program_options.hpp>
 
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <valarray>
-#include <vector>
+#include <deque>
 #include <map>
 #include <random>
 #include <limits>
+#include <chrono>
 
 #include <cmath>
 #include <cstdlib>
@@ -21,19 +23,9 @@ struct randombox
     G const zero = G(0);
     G const one = G(1);
 
-    std::random_device rd_;
     using seed_type = typename std::random_device::result_type;
     seed_type seed_;
     std::mt19937_64 random_;
-    std::uniform_int_distribution< seed_type > UI_;
-    using uint_param_type = typename std::uniform_int_distribution< seed_type >::param_type;
-    std::uniform_real_distribution< G > UR_; // uniform (0;1] ditribution
-    using ureal_param_type = typename std::uniform_real_distribution< G >::param_type;
-    std::normal_distribution< G > N_; // N(0, 1) distribution
-
-    randombox()
-        : UR_(std::nextafter(zero, std::numeric_limits< G >::max()), std::nextafter(one, std::numeric_limits< G >::max()))
-    { ; }
 
     void
     set_seed(seed_type const _seed)
@@ -45,12 +37,17 @@ struct randombox
     void
     set_seed()
     {
+#if 0
+        std::random_device rd_;
         seed_ = rd_();
+#else
+        seed_ = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+#endif
         random_.seed(seed_);
     }
 
     using point_type = std::valarray< G >;
-    using points_type = std::vector< point_type >;
+    using points_type = std::deque< point_type >;
     using mask_array_type = std::valarray< bool >;
 
     size_type dimension_ = 3;
@@ -101,18 +98,24 @@ struct randombox
     operator () (std::ostream & _out) const
     {
         assert(0 < dimension_);
-        _out << dimension_ << '\n';
-        size_type const size_ = points_.size();
-        assert(0 < size_);
-        _out << size_ << '\n';
-        for (point_type const & point_ : points_) {
-            assert(point_.size() == dimension_);
-            auto const last = std::prev(std::end(point_));
-            for (auto it = std::begin(point_); it != last; ++it) {
-                _out << *it << ' ';
+        std::ios state_(nullptr);
+        state_.copyfmt(_out);
+        {
+            _out << dimension_ << '\n';
+            size_type const size_ = points_.size();
+            assert(0 < size_);
+            _out << size_ << '\n';
+            _out.precision(std::numeric_limits< G >::digits10);
+            for (point_type const & point_ : points_) {
+                assert(point_.size() == dimension_);
+                auto const last = std::prev(std::end(point_));
+                for (auto it = std::begin(point_); it != last; ++it) {
+                    _out << *it << ' ';
+                }
+                _out << *last << '\n';
             }
-            _out << *last << '\n';
         }
+        _out.copyfmt(state_);
         return _out;
     }
 
@@ -144,10 +147,10 @@ struct randombox
     void
     add_sphere()
     {
-        uint_param_type const index_range_(0, dimension_ - 1);
-        uint_param_type const sign_range_(0, 1);
+        std::normal_distribution< G > N_; // N(0, 1) distribution
         point_type source_(dimension_);
-        for (size_type i = 0; i < count_; ++i) {
+        //points_.reserve(count_);
+        while (points_.size() < count_) {
             for (size_type j = 0; j < dimension_; ++j) {
                 source_[j] = N_(random_);
             }
@@ -155,19 +158,32 @@ struct randombox
             source_ *= source_;
             using std::sqrt;
             G norm_ = sqrt(source_.sum());
-            point_type & destination_ = points_.back();
-            if (norm_ < eps) { // if generated random point is too close to the origin, then generate random +-ort instead
-                destination_ = zero;
-                destination_[UI_(random_, index_range_)] = (UI_(random_, sign_range_) == 0) ? one : -one;
+            if (norm_ < eps) {
+                points_.pop_back();
             } else {
-                destination_ *= (one / std::move(norm_));
+                points_.back() *= (one / std::move(norm_));
             }
         }
     }
 
     void
-    add_unit_simplex()
+    add_ball()
     {
+        add_sphere();
+        std::uniform_real_distribution< G > UR_(zero,
+                                                std::nextafter(one, std::numeric_limits< G >::infinity())); // uniform [0;1] ditribution
+        for (size_type i = 0; i < count_; ++i) {
+            point_type & destination_ = points_[i];
+            using std::pow;
+            destination_ *= pow(UR_(random_), one / G(dimension_));
+        }
+    }
+
+    void
+    add_unit_simplex_face()
+    {
+        std::uniform_real_distribution< G > UR_(std::nextafter(zero, one),
+                                                std::nextafter(one, std::numeric_limits< G >::infinity())); // uniform (0;1] ditribution
         for (size_type i = 0; i < count_; ++i) {
             points_.emplace_back(dimension_);
             point_type & destination_ = points_.back();
@@ -223,16 +239,18 @@ main(int ac, char * av[])
     enum class geometrical_object
     {
         sphere,
+        ball,
         cube,
         diamond,
-        unit_simplex,
+        unit_simplex_face,
     };
 
     std::map< std::string, geometrical_object > const gobject_map_{
         {"sphere",       geometrical_object::sphere},
+        {"ball",         geometrical_object::ball},
         {"cube",         geometrical_object::cube},
         {"diamond",      geometrical_object::diamond},
-        {"unit-simplex", geometrical_object::unit_simplex},
+        {"unit-simplex-face", geometrical_object::unit_simplex_face},
     };
 
     namespace po = boost::program_options;
@@ -255,7 +273,7 @@ main(int ac, char * av[])
             //("rotate,R", po::value< std::string >(), "rotate the data around the specified axis by the specified angle")
             ("seed", po::value< seed_type >(), "use specified value as random number seed")
             //("integer", "generate integer coordinates in specified integer bounding box")
-            ("add", po::value< std::string >(), "add specific object to the output. Possible object types: sphere, cube, diamond, unit-simplex")
+            ("add", po::value< std::string >(), "add specific object to the output. Possible object types: sphere, ball, cube, diamond, unit-simplex-face")
             ;
 
     po::positional_options_description positional_;
@@ -294,14 +312,18 @@ main(int ac, char * av[])
                 randombox_.add_sphere();
                 break;
             }
+            case geometrical_object::ball : {
+                randombox_.add_ball();
+                break;
+            }
             case geometrical_object::cube : {
                 break;
             }
             case geometrical_object::diamond : {
                 break;
             }
-            case geometrical_object::unit_simplex : {
-                randombox_.add_unit_simplex();
+            case geometrical_object::unit_simplex_face : {
+                randombox_.add_unit_simplex_face();
                 break;
             }
             default : {
