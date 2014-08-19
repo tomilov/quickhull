@@ -55,6 +55,7 @@ struct randombox
     size_type const default_dimension = 3;
     size_type dimension_ = default_dimension;
     points_type source_points_;
+    points_type separate_points_;
     points_type resulting_points_;
     size_type count_ = 0;
     G bounding_box_ = one;
@@ -150,16 +151,37 @@ struct randombox
         }
     }
 
+    point_type
+    get_point(std::string const & _components)
+    {
+        point_type point_(zero, dimension_);
+        if (!_components.empty()) { // implicit point is origin
+            std::istringstream iss_(_components);
+            for (G & component_ : point_) {
+                if (!(iss_ >> component_)) {
+                    throw std::runtime_error("input: bad coordinate value");
+                }
+            }
+        }
+        return point_;
+    }
+
+    void
+    add_point(point_type && _point)
+    {
+        separate_points_.push_back(std::move(_point));
+    }
+
+    void
+    add_point(point_type const & _point)
+    {
+        separate_points_.push_back(_point);
+    }
+
     void
     add_point(std::string const & _components)
     {
-        std::istringstream iss_(_components);
-        source_points_.emplace_back(zero, dimension_);
-        for (G & component_ : source_points_.back()) {
-            if (!(iss_ >> component_)) {
-                throw std::runtime_error("input: bad coordinate value");
-            }
-        }
+        return add_point(get_point(_components));
     }
 
     void
@@ -299,6 +321,30 @@ struct randombox
     }
 
     void
+    project_to_cone()
+    {
+        assert(separate_points_.size() == 1);
+        point_type const & peak_ = separate_points_.back();
+        G const power_ = (one / G(dimension_));
+        for (size_type i = 0; i < count_; ++i) {
+            using std::pow;
+            G const p_ = pow(zero_to_one_(random_), power_);
+            resulting_points_.push_back(source_points_[i] * p_ + peak_ * (one - p_));
+        }
+    }
+
+    void
+    project_to_cylinder()
+    {
+        assert(separate_points_.size() == 1);
+        point_type const & element_ = separate_points_.back();
+        for (size_type i = 0; i < count_; ++i) {
+            G const p_ = zero_to_one_(random_);
+            resulting_points_.push_back(source_points_[i] + element_ * p_);
+        }
+    }
+
+    void
     map_to_simplex()
     {
 #if 0
@@ -317,14 +363,20 @@ struct randombox
         }
 #else
         //assert(!(dimension_ + 1 < source_points_.size()));
-        point_type point_(source_points_.size());
+        point_type point_(separate_points_.size());
         for (size_type i = 0; i < count_; ++i) {
             pick_uint_simplex_point(point_);
             resulting_points_.emplace_back(zero, dimension_);
             point_type & destination_ = resulting_points_.back();
-            destination_ = std::inner_product(std::begin(source_points_), std::end(source_points_), std::begin(point_), destination_);
+            destination_ = std::inner_product(std::begin(separate_points_), std::end(separate_points_), std::begin(point_), destination_);
         }
 #endif
+    }
+
+    void
+    map_to_parallelotope()
+    {
+        //
     }
 
 };
@@ -358,20 +410,26 @@ main(int ac, char * av[])
         sphere,
         ball,
         cube,
-        diamond_solid,
         diamond_surface,
+        diamond_solid,
         unit_simplex,
         simplex,
+        parallelotope,
+        cylinder,
+        cone,
     };
 
-    std::map< std::string,  geometrical_object > const gobject_map_{
+    std::map< std::string,  geometrical_object > const gomap_{
         {"sphere",          geometrical_object::sphere},
         {"ball",            geometrical_object::ball},
         {"cube",            geometrical_object::cube},
-        {"diamond-solid",   geometrical_object::diamond_solid},
         {"diamond-surface", geometrical_object::diamond_surface},
+        {"diamond-solid",   geometrical_object::diamond_solid},
         {"unit-simplex",    geometrical_object::unit_simplex},
         {"simplex",         geometrical_object::simplex},
+        {"parallelotope",   geometrical_object::parallelotope},
+        {"cylinder",        geometrical_object::cylinder},
+        {"cone",            geometrical_object::cone},
     };
 
     namespace po = boost::program_options;
@@ -396,7 +454,9 @@ main(int ac, char * av[])
             //("rotate,R", po::value< std::string >(), "rotate the data around the specified axis by the specified angle")
             ("seed", po::value< seed_type >(), "use specified value as random number seed")
             //("integer", "generate integer coordinates in specified integer bounding box")
-            ("add", po::value< std::string >(), "add specific object to the output. Possible object types: sphere, ball, cube, diamond, unit-simplex, convex-solid")
+            ("add", po::value< std::string >(), "add specific object to the output. Possible object types: sphere, ball, cube, diamond-surface, diamond-solid, unit-simplex, convex-solid")
+            ("generate", po::value< std::string >(), "generate points inside embeddable simplex or parallelotope")
+            ("project-to", po::value< std::string >(), "project from affine subspace to cone or cylinder. Possible projections types: cone, cylinder")
             ;
 
     po::positional_options_description positional_;
@@ -452,8 +512,8 @@ main(int ac, char * av[])
     }
     it = vm_.find("add");
     if (it != vmend) {
-        auto const gom = gobject_map_.find(it->second.template as< std::string >());
-        if (gom != gobject_map_.cend()) {
+        auto const gom = gomap_.find(it->second.template as< std::string >());
+        if (gom != gomap_.cend()) {
             switch (gom->second) {
             case geometrical_object::sphere : {
                 randombox_.add_sphere();
@@ -481,6 +541,18 @@ main(int ac, char * av[])
             }
             case geometrical_object::simplex : {
                 randombox_.map_to_simplex();
+                break;
+            }
+            case geometrical_object::parallelotope : {
+                randombox_.map_to_parallelotope();
+                break;
+            }
+            case geometrical_object::cylinder : {
+                randombox_.project_to_cylinder();
+                break;
+            }
+            case geometrical_object::cone : {
+                randombox_.project_to_cone();
                 break;
             }
             default : {
