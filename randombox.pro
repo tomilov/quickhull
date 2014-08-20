@@ -10,4 +10,3 @@ CONFIG(debug, debug|release) {
 TARGET = "randombox"
 
 SOURCES += "src/randombox.cpp"
-HEADERS += "include/quickhull.hpp"

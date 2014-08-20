@@ -25,7 +25,7 @@ struct randombox
     G const zero = G(0);
     G const one = G(1);
 
-    using seed_type = typename std::random_device::result_type;
+    using seed_type = typename std::mt19937_64::result_type;
     seed_type seed_;
     std::mt19937_64 random_;
 
@@ -60,13 +60,11 @@ struct randombox
     size_type count_ = 0;
     G bounding_box_ = one;
 
-    std::normal_distribution< G > N_; // N(0, 1) distribution
+    std::normal_distribution< G > N_; // standard normal distribution
     std::uniform_real_distribution< G > zero_to_one_; // uniform [0;1] ditribution
-    std::uniform_real_distribution< G > minus_one_to_one_; // uniform [-1;1] distribution
 
     randombox()
         : zero_to_one_(zero, std::nextafter(one, one + one)) // ? std::nextafter(zero, one)
-        , minus_one_to_one_(-one, std::nextafter(one, one + one))
     { ; }
 
     std::istream &
@@ -202,51 +200,41 @@ struct randombox
     }
 
     void
-    map_surface_to_solid()
+    pick_unit_cube_point(point_type & _point)
     {
-        G const power_ = (one / G(dimension_));
-        for (point_type & destination_ : resulting_points_) {
-            using std::pow;
-            destination_ *= pow(zero_to_one_(random_), power_);
+        for (G & component_ : _point) {
+            component_ = zero_to_one_(random_);
+        }
+    }
+
+    point_type
+    pick_unit_cube_point(size_type const _dimension)
+    {
+        point_type point_(_dimension);
+        pick_unit_cube_point(point_);
+        return point_;
+    }
+
+    void
+    add_unit_cube()
+    {
+        for (size_type i = 0; i < count_; ++i) {
+            resulting_points_.push_back(pick_unit_cube_point(dimension_));
         }
     }
 
     void
-    add_sphere()
+    generate_parallelotope()
     {
-        point_type source_(dimension_);
-        while (resulting_points_.size() < count_) {
-            for (size_type j = 0; j < dimension_; ++j) {
-                source_[j] = N_(random_);
-            }
-            resulting_points_.push_back(source_);
-            source_ *= source_;
-            using std::sqrt;
-            G norm_ = sqrt(source_.sum());
-            if (norm_ < eps) {
-                resulting_points_.pop_back();
-            } else {
-                resulting_points_.back() *= (one / std::move(norm_));
-            }
-        }
-    }
-
-    void
-    add_ball()
-    {
-        add_sphere();
-        map_surface_to_solid();
-    }
-
-    void
-    add_cube_solid()
-    {
-        while (resulting_points_.size() < count_) {
-            resulting_points_.emplace_back(dimension_);
-            point_type & destination_ = resulting_points_.back();
-            for (size_type i = 0; i < dimension_; ++i) {
-                destination_[i] = minus_one_to_one_(random_);
-            }
+        assert(!(dimension_ + 1 < source_points_.size()));
+        assert(1 < source_points_.size());
+        point_type const & vertex_ = separate_points_.front();
+        auto const vbeg = std::next(separate_points_.cbegin());
+        auto const vend = separate_points_.cend();
+        point_type point_(separate_points_.size() - 1);
+        for (size_type i = 0; i < count_; ++i) {
+            pick_unit_cube_point(point_);
+            resulting_points_.push_back(std::inner_product(vbeg, vend, std::begin(point_), vertex_));
         }
     }
 
@@ -286,21 +274,19 @@ struct randombox
     void
     pick_uint_simplex_point(point_type & _point)
     {
-        for (G & component_ : _point) {
-            component_ = zero_to_one_(random_);
-        }
-        _point = std::log(_point);
+        pick_unit_cube_point(_point);
+        _point = -std::log(_point);
         G norm_ = _point.sum();
-        if (norm_ == -std::numeric_limits< G >::infinity()) { // if some of logarithms of generated values is -HUGE_VAL, then the correspoinding non-normalized value is one
-            mask_array_type const ones_ = (_point == -std::numeric_limits< G >::infinity()); // store into std::valarray< bool > to prevent evaluations to being lazy
+        if (norm_ == std::numeric_limits< G >::infinity()) { // if some of logarithms of generated values is -HUGE_VAL, then the correspoinding non-normalized value is one
+            mask_array_type const ones_ = (_point == std::numeric_limits< G >::infinity()); // store into std::valarray< bool > to prevent evaluations to being lazy
             _point[ones_] = one;
             _point[!ones_] = zero;
             norm_ = _point.sum(); // number of close-to-zero generated values, can be zero (if there just an overflow)
         }
-        if (!(norm_ < -eps)) { // if generated random point is too close to the origin, then assume, that origin is good choise
-            _point = zero;
-        } else {
+        if (eps < norm_) {
             _point *= (one / std::move(norm_));
+        } else {
+            _point = zero; // if generated random point is too close to the origin, then assume, that origin is good choise
         }
     }
 
@@ -321,6 +307,61 @@ struct randombox
     }
 
     void
+    generate_simplex()
+    {
+        assert(!(dimension_ + 1 < source_points_.size()));
+        assert(1 < source_points_.size());
+        auto const pbeg = separate_points_.cbegin();
+        auto const pend = separate_points_.cend();
+        point_type point_(separate_points_.size());
+        for (size_type i = 0; i < count_; ++i) {
+            pick_uint_simplex_point(point_);
+            resulting_points_.push_back(std::inner_product(pbeg, pend, std::begin(point_), point_type(zero, dimension_)));
+        }
+    }
+
+    void
+    add_sphere()
+    {
+        point_type source_(dimension_);
+        while (resulting_points_.size() < count_) {
+            for (size_type j = 0; j < dimension_; ++j) {
+                source_[j] = N_(random_);
+            }
+            resulting_points_.push_back(source_);
+            source_ *= source_;
+            using std::sqrt;
+            G norm_ = sqrt(source_.sum());
+            if (norm_ < eps) {
+                resulting_points_.pop_back();
+            } else {
+                resulting_points_.back() *= (one / std::move(norm_));
+            }
+        }
+    }
+
+    void
+    add_ball()
+    {
+        add_sphere();
+        G const power_ = (one / G(dimension_));
+        for (point_type & destination_ : resulting_points_) {
+            using std::pow;
+            destination_ *= pow(zero_to_one_(random_), power_);
+        }
+    }
+
+    void
+    project_to_cylinder()
+    {
+        assert(separate_points_.size() == 1);
+        point_type const & element_ = separate_points_.back();
+        for (size_type i = 0; i < count_; ++i) {
+            resulting_points_.push_back(source_points_[i] + element_ * zero_to_one_(random_));
+        }
+    }
+
+    void
     project_to_cone()
     {
         assert(separate_points_.size() == 1);
@@ -331,52 +372,6 @@ struct randombox
             G const p_ = pow(zero_to_one_(random_), power_);
             resulting_points_.push_back(source_points_[i] * p_ + peak_ * (one - p_));
         }
-    }
-
-    void
-    project_to_cylinder()
-    {
-        assert(separate_points_.size() == 1);
-        point_type const & element_ = separate_points_.back();
-        for (size_type i = 0; i < count_; ++i) {
-            G const p_ = zero_to_one_(random_);
-            resulting_points_.push_back(source_points_[i] + element_ * p_);
-        }
-    }
-
-    void
-    map_to_simplex()
-    {
-#if 0
-        assert(!source_points_.empty());
-        std::uniform_real_distribution< G > zero_to_one_(zero, std::nextafter(one, one + one)); // uniform [0;1] ditribution
-        size_type const source_size_ = source_points_.size();
-        while (resulting_points_.size() < count_) {
-            resulting_points_.emplace_back(source_points_.front());
-            point_type & destination_ = resulting_points_.back();
-            for (size_type i = 1; i < source_size_; ++i) {
-                using std::pow;
-                G const p_ = pow(zero_to_one_(random_), (one / G(i)));
-                destination_ *= p_;
-                destination_ += source_points_[i] * (one - p_);
-            }
-        }
-#else
-        //assert(!(dimension_ + 1 < source_points_.size()));
-        point_type point_(separate_points_.size());
-        for (size_type i = 0; i < count_; ++i) {
-            pick_uint_simplex_point(point_);
-            resulting_points_.emplace_back(zero, dimension_);
-            point_type & destination_ = resulting_points_.back();
-            destination_ = std::inner_product(std::begin(separate_points_), std::end(separate_points_), std::begin(point_), destination_);
-        }
-#endif
-    }
-
-    void
-    map_to_parallelotope()
-    {
-        //
     }
 
 };
@@ -437,10 +432,11 @@ main(int ac, char * av[])
     po::options_description options_("Information options");
     options_.add_options()
             ("help", "produce this help message")
-            ("dimension,D", po::value< size_type >()->default_value(0), "dimensionality value")
-            ("count,N", po::value< size_type >(), "count of points generated (can be specified without the key)")
             ("input,I", po::value< std::string >()->implicit_value(""), "input file name (nothing for stdin)")
             ("output,O", po::value< std::string >()->implicit_value(""), "output file name (stdout by default)")
+            ("seed", po::value< seed_type >(), "use specified value as random number seed")
+            ("dimension,D", po::value< size_type >()->default_value(0), "dimensionality value")
+            ("count,N", po::value< size_type >(), "count of points generated (can be specified without the key)")
             //("bounding-box,B", po::value< G >(), "bounding box coordinates")
             //("mesh,M", po::value< std::string >(), "lattice (mesh) rotated by {{n, -m, 0}, {m, n, 0}, {0, 0, r}}. Skipping the r, makes r = sqrt(n^2 + m^2). m = 1, n = 0 is orthogonal lattice")
             //("cospherical,S", "cospherical points randomly generated in a cube and projected to the unit sphere")
@@ -452,9 +448,7 @@ main(int ac, char * av[])
             ("point,P", po::value< std::vector< std::string > >(), "add point with specified coordinates to the input")
             //("offset,O", "offset the data by adding specified component to each of the coordinates")
             //("rotate,R", po::value< std::string >(), "rotate the data around the specified axis by the specified angle")
-            ("seed", po::value< seed_type >(), "use specified value as random number seed")
-            //("integer", "generate integer coordinates in specified integer bounding box")
-            ("add", po::value< std::string >(), "add specific object to the output. Possible object types: sphere, ball, cube, diamond-surface, diamond-solid, unit-simplex, convex-solid")
+            ("add", po::value< std::string >(), "Minkowski sum of input set and generated body or surface. Possible object types: sphere, ball, cube, diamond-surface, diamond-solid, unit-simplex")
             ("generate", po::value< std::string >(), "generate points inside embeddable simplex or parallelotope")
             ("project-to", po::value< std::string >(), "project from affine subspace to cone or cylinder. Possible projections types: cone, cylinder")
             ;
@@ -524,7 +518,7 @@ main(int ac, char * av[])
                 break;
             }
             case geometrical_object::cube : {
-                randombox_.add_cube_solid();
+                randombox_.add_unit_cube();
                 break;
             }
             case geometrical_object::diamond_surface : {
@@ -540,11 +534,11 @@ main(int ac, char * av[])
                 break;
             }
             case geometrical_object::simplex : {
-                randombox_.map_to_simplex();
+                randombox_.generate_simplex();
                 break;
             }
             case geometrical_object::parallelotope : {
-                randombox_.map_to_parallelotope();
+                randombox_.generate_parallelotope();
                 break;
             }
             case geometrical_object::cylinder : {
