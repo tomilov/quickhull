@@ -90,10 +90,10 @@ private : // math (simple functions, matrices, etc)
         for (size_type row = 0; row < _size; ++row) {
             row_type & lhs_ = shadow_matrix_[row];
             row_type const & row_ = matrix_[row];
-            auto const rbeg = std::begin(row_);
-            auto const rend = std::end(row_);
+            auto const rbeg = std::cbegin(row_);
+            auto const rend = std::cend(row_);
             for (size_type col = 0; col < _size; ++col) {
-                lhs_[col] = std::inner_product(rbeg, rend, std::begin(matrix_[col]), zero);
+                lhs_[col] = std::inner_product(rbeg, rend, std::cbegin(matrix_[col]), zero);
             }
         }
     }
@@ -109,11 +109,11 @@ private : // math (simple functions, matrices, etc)
             while (++p_ < _size) {
                 G y_ = abs(_matrix[p_][i]);
                 if (max_ < y_) {
-                    max_ = y_;
+                    max_ = std::move(y_);
                     pivot_ = p_;
                 }
             }
-            if (!(eps < max_)) { // regular?
+            if (!(eps < std::move(max_))) { // regular?
                 return zero; // singular
             }
             row_type & ri_ = _matrix[i];
@@ -204,7 +204,7 @@ public :
               typename point_list::const_iterator last)
             : vertices_(first, std::prev(middle))
         {
-            vertices_.insert(vertices_.end(), middle, last);
+            vertices_.insert(std::cbegin(vertices_), middle, last);
             normal_.resize(vertices_.size());
         }
 
@@ -218,16 +218,16 @@ public :
         G
         distance(point_type const & _point) const
         {
-            return std::inner_product(std::begin(normal_), std::end(normal_), std::begin(_point), D);
-        }
-
-        G
-        cos_of_dihedral_angle(facet const & _other) const // for faces merging in the future
-        {
-            return std::inner_product(std::begin(normal_), std::end(normal_), std::begin(_other.normal_), zero);
+            return std::inner_product(std::cbegin(normal_), std::cend(normal_), std::cbegin(_point), D);
         }
 
     };
+
+    G
+    cos_of_dihedral_angle(facet const & _this, facet const & _other) const // for faces merging in the future
+    {
+        return std::inner_product(std::cbegin(_this.normal_), std::cend(_this.normal_), std::cbegin(_other.normal_), zero);
+    }
 
     using facets_storage_type = std::deque< facet >;
 
@@ -246,7 +246,7 @@ private : // geometry and basic operations on geometric primitives
     set_hyperplane_equation(facet & _facet)
     {
         for (size_type row = 0; row < dimension_; ++row) {
-            std::copy_n(std::begin(points_[_facet.vertices_[row]]), dimension_, std::begin(shadow_matrix_[row]));
+            std::copy_n(std::cbegin(points_[_facet.vertices_[row]]), dimension_, std::begin(shadow_matrix_[row]));
         }
         transpose();
         G N = zero;
@@ -260,7 +260,7 @@ private : // geometry and basic operations on geometric primitives
         N = one / sqrt(N);
         restore_matrix();
         _facet.D = -det() * N;
-        _facet.normal_ *= N;
+        _facet.normal_ *= std::move(N);
     }
 
     size_type
@@ -272,19 +272,19 @@ private : // geometry and basic operations on geometric primitives
             facets_.emplace_back(std::move(_vertices), _neighbour);
             facet & facet_ = facets_.back();
             set_hyperplane_equation(facet_);
-            ordered_.emplace_back(facet_.vertices_.cbegin(),
-                                  facet_.vertices_.cend());
+            ordered_.emplace_back(std::cbegin(facet_.vertices_),
+                                  std::cend(facet_.vertices_));
             return f;
         } else {
-            auto const rend = std::prev(removed_facets_.end());
+            auto const rend = std::prev(std::cend(removed_facets_));
             size_type const f = *rend;
             removed_facets_.erase(rend);
             facet & facet_ = facets_[f];
             facet_.vertices_ = std::move(_vertices);
             facet_.neighbours_ = {_neighbour};
             set_hyperplane_equation(facet_);
-            ordered_[f].insert(facet_.vertices_.cbegin(),
-                               facet_.vertices_.cend());
+            ordered_[f].insert(std::cbegin(facet_.vertices_),
+                               std::cend(facet_.vertices_));
             return f;
         }
     }
@@ -296,11 +296,11 @@ private : // geometry and basic operations on geometric primitives
         size_type const rows_ = _vertices.size();
         assert(!(dimension_ < rows_));
         row_type & origin_ = shadow_matrix_.back();
-        std::copy_n(std::begin(_apex), dimension_, std::begin(origin_));
-        auto vertex = _vertices.cbegin();
+        std::copy_n(std::cbegin(_apex), dimension_, std::begin(origin_));
+        auto vertex = std::cbegin(_vertices);
         for (size_type row = 0; row < rows_; ++row) {
-            assert(vertex != _vertices.cend());
-            std::copy_n(std::begin(points_[*vertex]), dimension_, std::begin(matrix_[row]));
+            assert(vertex != std::cend(_vertices));
+            std::copy_n(std::cbegin(points_[*vertex]), dimension_, std::begin(matrix_[row]));
             ++vertex;
         }
         for (size_type row = 0; row < rows_; ++row) { // vectorize
@@ -324,19 +324,19 @@ private : // geometry and basic operations on geometric primitives
     G
     steal_best(point_list & _from, point_list & _to)
     {
-        auto it = _from.begin();
-        auto const end = _from.end();
+        auto it = std::cbegin(_from);
+        auto const end = std::cend(_from);
         G hypervolume_ = hypervolume(_to, *it);
         auto furthest = it;
         while (++it != end) {
-            G const v_ = hypervolume(_to, *it);
+            G v_ = hypervolume(_to, *it);
             if (abs(hypervolume_) < abs(v_)) {
-                hypervolume_ = v_;
+                hypervolume_ = std::move(v_);
                 furthest = it;
             }
         }
         if (eps < abs(hypervolume_)) {
-            _to.splice(_to.end(), _from, furthest);
+            _to.splice(std::cend(_to), _from, furthest);
         }
         return hypervolume_;
     }
@@ -348,11 +348,11 @@ private : // geometry and basic operations on geometric primitives
     ranking_meta_type ranking_meta_;
 
     void
-    rank(G const _orientation, size_type const _facet)
+    rank(G && _orientation, size_type const _facet)
     {
         if (eps < _orientation) {
-            auto const r = ranking_.emplace(_orientation, _facet);
-            ranking_meta_.emplace(_facet, r);
+            auto r = ranking_.emplace(std::move(_orientation), _facet);
+            ranking_meta_.emplace(_facet, std::move(r));
         }
     }
 
@@ -360,7 +360,7 @@ private : // geometry and basic operations on geometric primitives
     unrank(size_type const _facet)
     {
         auto const r = ranking_meta_.find(_facet);
-        if (r != ranking_meta_.end()) {
+        if (r != std::end(ranking_meta_)) {
             ranking_.erase(r->second);
             ranking_meta_.erase(r);
         }
@@ -372,7 +372,7 @@ private : // geometry and basic operations on geometric primitives
         if (ranking_.empty()) {
             return facets_.size(); // special value
         } else {
-            auto const r = std::prev(ranking_.cend());
+            auto const r = std::prev(std::cend(ranking_));
             return r->second;
         }
     }
@@ -380,46 +380,46 @@ private : // geometry and basic operations on geometric primitives
     G
     partition(facet & _facet, point_list & _points)
     {
-        auto it = _points.begin();
-        auto const end = _points.end();
+        auto it = std::cbegin(_points);
+        auto const end = std::cend(_points);
         G distance_ = zero;
         while (it != end) {
             auto const next = std::next(it);
             size_type const p = *it;
-            G const d_ = _facet.distance(points_[p]);
+            G d_ = _facet.distance(points_[p]);
             if (eps < d_) {
                 if ((distance_ < d_) || _facet.outside_.empty()) {
-                    distance_ = d_;
+                    distance_ = std::move(d_);
                     _facet.outside_.push_front(p);
                 } else {
                     _facet.outside_.push_back(p);
                 }
                 _points.erase(it);
-            } else if (!(eps < abs(d_))) { // coplanar
+            } else if (!(eps < abs(std::move(d_)))) { // coplanar
                 _facet.coplanar_.push_back(p);
             }
             it = next;
         }
-        return abs(distance_);
+        return abs(std::move(distance_));
     }
 
     void
     adjacency(facets_type const & _newfacets)
     {
-        auto const nend = _newfacets.cend();
-        for (auto first = _newfacets.cbegin(); first != nend; ++first) {
+        auto const nend = std::cend(_newfacets);
+        for (auto first = std::cbegin(_newfacets); first != nend; ++first) {
             size_type const f = *first;
             point_set & first_ = ordered_[f];
-            auto const lbeg = first_.cbegin();
-            auto const lend = first_.cend();
+            auto const lbeg = std::cbegin(first_);
+            auto const lend = std::cend(first_);
             facet & first_facet_ = facets_[f];
             size_type neighbours_count_ = first_facet_.neighbours_.size();
             if (neighbours_count_ < dimension_) {
                 for (auto second = std::next(first); second != nend; ++second) {
                     size_type const s = *second;
                     point_set & second_ = ordered_[s];
-                    auto const rend = second_.cend();
-                    auto r = second_.cbegin();
+                    auto const rend = std::cend(second_);
+                    auto r = std::cbegin(second_);
                     auto l = lbeg;
                     bool lgood = false;
                     bool rgood = false;
@@ -471,27 +471,27 @@ public : // largest possible simplex heuristic, convex hull algorithm
         size_type const size_ = points_.size();
         assert(dimension_ < size_);
         internal_set_.resize(size_);
-        std::iota(internal_set_.begin(), internal_set_.end(), 0);
+        std::iota(std::begin(internal_set_), std::end(internal_set_), size_type(0));
         point_list basis_;
-        basis_.splice(basis_.end(), internal_set_, internal_set_.begin());
+        basis_.splice(std::cend(basis_), internal_set_, std::cbegin(internal_set_));
         if (!(eps < abs(steal_best(internal_set_, basis_)))) {
             return basis_; // can't find linearly independent point
         }
-        internal_set_.splice(internal_set_.end(), basis_, basis_.begin()); // rejudge 0-indexed point
+        internal_set_.splice(std::cend(internal_set_), basis_, std::cbegin(basis_)); // rejudge 0-indexed point
         for (size_type i = 1; i < dimension_; ++i) {
             if (!(eps < abs(steal_best(internal_set_, basis_)))) {
                 return basis_; // can't find linearly independent point
             }
         }
         assert(basis_.size() == dimension_); // facet
-        G const hypervolume_ = steal_best(internal_set_, basis_);
+        G hypervolume_ = steal_best(internal_set_, basis_);
         if (!(eps < abs(hypervolume_))) {
             return basis_; // can't find linearly independent point
         }
         assert(basis_.size() == dimension_ + 1); // simplex
-        bool inward_ = (zero < hypervolume_); // is top oriented?
-        auto const vbeg = basis_.cbegin();
-        auto const vend = basis_.cend();
+        bool inward_ = (zero < std::move(hypervolume_)); // is top oriented?
+        auto const vbeg = std::cbegin(basis_);
+        auto const vend = std::cend(basis_);
         for (auto exclusive = vend; exclusive != vbeg; --exclusive) {
             size_type const newfacet = facets_.size();
             facets_.emplace_back(vbeg, exclusive, vend);
@@ -503,7 +503,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                      facet_.vertices_.back());
             }
             set_hyperplane_equation(facet_);
-            ordered_.emplace_back(facet_.vertices_.cbegin(), facet_.vertices_.cend());
+            ordered_.emplace_back(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
             rank(partition(facet_, internal_set_), newfacet);
         }
         { // adjacency
@@ -525,7 +525,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         facet_set visited_;
         facet_unordered_set viewable_;
         facet_set visible_facets_;
-        auto const vfend = visible_facets_.end();
+        auto const vfend = std::end(visible_facets_); // not invalidated till the end
         facet_set neighbours_;
         facets_type newfacets_;
         point_array vertices_;
@@ -539,18 +539,18 @@ public : // largest possible simplex heuristic, convex hull algorithm
             { // find visible facets
                 assert(visited_.empty());
                 assert(viewable_.empty());
-                viewable_.insert(best_facet_.neighbours_.cbegin(),
-                                 best_facet_.neighbours_.cend());
+                viewable_.insert(std::cbegin(best_facet_.neighbours_),
+                                 std::cend(best_facet_.neighbours_));
                 while (!viewable_.empty()) {
-                    auto const first = viewable_.begin();
+                    auto const first = std::cbegin(viewable_);
                     size_type const f = *first;
                     facet const & watchable_ = facets_[f];
                     if (eps < watchable_.distance(apex_)) {
                         visible_facets_.insert(f);
-                        std::set_difference(watchable_.neighbours_.cbegin(),
-                                            watchable_.neighbours_.cend(),
-                                            visited_.cbegin(), visited_.cend(),
-                                            std::inserter(viewable_, viewable_.end()));
+                        std::set_difference(std::cbegin(watchable_.neighbours_),
+                                            std::cend(watchable_.neighbours_),
+                                            std::cbegin(visited_), std::cend(visited_),
+                                            std::inserter(viewable_, std::end(viewable_)));
                     }
                     visited_.insert(f);
                     viewable_.erase(first);
@@ -561,7 +561,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             for (size_type const visible_facet : visible_facets_) {
                 facet & visible_facet_ = facets_[visible_facet];
                 vertices_ = std::move(visible_facet_.vertices_);
-                outside_.insert(outside_.end(), visible_facet_.outside_.begin(), visible_facet_.outside_.end());
+                outside_.insert(std::cend(outside_), std::cbegin(visible_facet_.outside_), std::cend(visible_facet_.outside_));
                 visible_facet_.outside_.clear();
                 neighbours_ = std::move(visible_facet_.neighbours_);
                 unrank(visible_facet);
@@ -575,7 +575,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         {
                             assert(ridge_.empty());
                             ridge_.reserve(dimension_);
-                            auto const hend = horizon_.cend();
+                            auto const hend = std::cend(horizon_);
                             for (size_type const vertex : vertices_) { // facets intersection with keeping of points order as it is in visible facet
                                 if (horizon_.find(vertex) == hend) {
                                     ridge_.push_back(apex);
@@ -589,7 +589,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         newfacets_.push_back(newfacet);
                         facet_set & horizon_neighbours_ = horizon_facet_.neighbours_;
                         horizon_neighbours_.erase(visible_facet);
-                        horizon_neighbours_.insert(horizon_neighbours_.end(), newfacet);
+                        horizon_neighbours_.insert(std::cend(horizon_neighbours_), newfacet);
                     }
                 }
             }
@@ -598,7 +598,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
             newfacets_.clear();
-            internal_set_.splice(internal_set_.end(), outside_);
+            internal_set_.splice(std::cend(internal_set_), std::move(outside_));
         }
         ordered_.clear();
         ordered_.shrink_to_fit();
