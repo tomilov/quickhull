@@ -204,7 +204,7 @@ public :
               typename point_list::const_iterator last)
             : vertices_(first, std::prev(middle))
         {
-            vertices_.insert(std::cbegin(vertices_), middle, last);
+            vertices_.insert(std::cend(vertices_), middle, last);
             normal_.resize(vertices_.size());
         }
 
@@ -395,7 +395,7 @@ private : // geometry and basic operations on geometric primitives
                     _facet.outside_.push_back(p);
                 }
                 _points.erase(it);
-            } else if (!(eps < abs(std::move(d_)))) { // coplanar
+            } else if (!(std::move(d_) < -eps)) { // coplanar
                 _facet.coplanar_.push_back(p);
             }
             it = next;

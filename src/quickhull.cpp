@@ -52,7 +52,7 @@ main(int argc, char * argv[])
         std::cerr << "io: count line" << std::endl;
         return EXIT_FAILURE;
     }
-    using G = float;
+    using G = double;
     using point_type = std::valarray< G >;
     using points_type = std::valarray< point_type >;
     size_type count_;
