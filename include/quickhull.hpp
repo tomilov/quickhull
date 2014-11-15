@@ -113,7 +113,7 @@ private : // math (simple functions, matrices, etc)
                     pivot_ = p_;
                 }
             }
-            if (!(eps < std::move(max_))) { // regular?
+            if (!(eps < max_)) { // regular?
                 return zero; // singular
             }
             row_type & ri_ = _matrix[i];
@@ -171,7 +171,7 @@ public :
         , points_(_points)
         , eps(_eps)
     {
-        assert(zero < _eps);
+        assert(!(_eps < zero));
         size_type const minor_size_ = dimension_ - 1;
         for (size_type row = 0; row < minor_size_; ++row) {
             matrix_[row].resize(dimension_);
@@ -395,7 +395,7 @@ private : // geometry and basic operations on geometric primitives
                     _facet.outside_.push_back(p);
                 }
                 _points.erase(it);
-            } else if (!(std::move(d_) < -eps)) { // coplanar
+            } else if (!(d_ < -eps)) { // coplanar
                 _facet.coplanar_.push_back(p);
             }
             it = next;
@@ -489,7 +489,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             return basis_; // can't find linearly independent point
         }
         assert(basis_.size() == dimension_ + 1); // simplex
-        bool inward_ = (zero < std::move(hypervolume_)); // is top oriented?
+        bool inward_ = (zero < hypervolume_); // is top oriented?
         auto const vbeg = std::cbegin(basis_);
         auto const vend = std::cend(basis_);
         for (auto exclusive = vend; exclusive != vbeg; --exclusive) {
