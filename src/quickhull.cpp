@@ -4,8 +4,9 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <valarray>
 #include <chrono>
+#include <deque>
+#include <set>
 
 #include <cstdlib>
 #include <cstdio>
@@ -32,7 +33,7 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     std::istringstream iss_;
-    size_type dimension_;
+    size_type dimension_ = 0;
     {
         iss_.str(line_);
         if (!(iss_ >> dimension_)) {
@@ -53,8 +54,8 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     using G = double;
-    using point_type = std::valarray< G >;
-    using points_type = std::valarray< point_type >;
+    using point = std::deque< G >;
+    using points = std::deque< point >;
     size_type count_;
     {
         iss_.str(line_);
@@ -64,13 +65,13 @@ main(int argc, char * argv[])
         }
         iss_.clear();
     }
-    points_type points_(count_);
+    points points_(count_);
     for (size_type i = 0; i < count_; ++i) {
         if (!std::getline(in_, line_)) {
             std::cerr << "io: line count error" << std::endl;
             return EXIT_FAILURE;
         }
-        point_type & point_ = points_[i];
+        point & point_ = points_[i];
         point_.resize(dimension_);
         {
             iss_.str(line_);
@@ -86,7 +87,7 @@ main(int argc, char * argv[])
     //std::cout.rdbuf()->pubsetbuf(nullptr, 0);
     std::cout << "#D = " << dimension_ << '\n';
     std::cout << "#N = " << count_ << '\n';
-    using quick_hull_type = quick_hull< points_type >;
+    using quick_hull_type = quick_hull< points >;
     quick_hull_type quick_hull_(dimension_, points_);
     {
         using std::chrono::duration_cast;
@@ -98,7 +99,7 @@ main(int argc, char * argv[])
             steady_clock::time_point const end = steady_clock::now();
             std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
             if (basis_size_ != dimension_ + 1) {
-                std::cerr << "cannot create a simplex" << std::endl;
+                std::cerr << "cannot create a simplex: size of basis: " << basis_size_ << std::endl;
                 return EXIT_FAILURE;
             }
         }
@@ -115,6 +116,7 @@ main(int argc, char * argv[])
     std::ostream & os_ = std::cout;
     os_ << "clear\n";
     os_ << "set autoscale\n";
+    os_ << "set view equal xyz\n";
     switch (dimension_) {
     case 1 : {
         os_ << "plot";
@@ -139,7 +141,7 @@ main(int argc, char * argv[])
     }
     os_ << ";\n";
     for (size_type i = 0; i < count_; ++i) {
-        point_type const & point_ = points_[i];
+        point const & point_ = points_[i];
         for (G const & coordinate_ : point_) {
             os_ << coordinate_ << ' ';
         }
@@ -147,7 +149,7 @@ main(int argc, char * argv[])
     }
     os_ << "e\n";
     for (size_type i = 0; i < count_; ++i) {
-        point_type const & point_ = points_[i];
+        point const & point_ = points_[i];
         for (G const & coordinate_ : point_) {
             os_ << coordinate_ << ' ';
         }
@@ -162,7 +164,7 @@ main(int argc, char * argv[])
             }
             os_ << '\n';
         }
-        point_type const & first_vertex_ = points_[vertices_.front()];
+        point const & first_vertex_ = points_[vertices_.front()];
         for (G const & coordinate_ : first_vertex_) {
             os_ << coordinate_ << ' ';
         }

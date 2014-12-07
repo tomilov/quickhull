@@ -1,7 +1,7 @@
 CONFIG -= qt
 TEMPLATE = app
 
-CONFIG *= exceptions rtti warn_on
+CONFIG *= exceptions rtti warn_on optimize_full
 QMAKE_CXXFLAGS_CXX11 = -std=gnu++1z
 CONFIG *= c++11
 
@@ -18,10 +18,8 @@ CONFIG(debug, debug|release) {
     DEFINES += _GLIBCXX_DEBUG=1
 }
 
-QMAKE_CXXFLAGS_DEBUG += -fno-inline
-QMAKE_LFLAGS_DEBUG   += -fno-inline
-#QMAKE_CXXFLAGS_RELEASE += -g -pg
-#QMAKE_LFLAGS_RELEASE   += -g -pg
+QMAKE_CXXFLAGS_DEBUG += -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls
+#QMAKE_LFLAGS_DEBUG   +=
 
 win32 {
     CONFIG += console
