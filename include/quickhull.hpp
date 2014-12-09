@@ -50,6 +50,8 @@ struct quick_hull
 
     using point_list = std::list< size_type >;
     using facet_set = std::set< size_type >;
+    using facet_unordered_set = std::unordered_set< size_type >;
+    using facet_deque = std::deque< size_type >;
     using point_array = std::vector< size_type >;
     using point_deque = std::deque< size_type >;
 
@@ -229,9 +231,6 @@ private :
     ordered_vertices ordered_; // ordered, but not oriented vertices of facets
     facet_set_desc removed_facets_;
 
-    using facet_unordered_set = std::unordered_set< size_type >;
-    using facet_deque = std::deque< size_type >;
-
     void
     set_hyperplane_equation(facet & _facet)
     {
@@ -271,7 +270,7 @@ private :
             removed_facets_.erase(rend);
             facet & facet_ = facets_[f];
             facet_.vertices_ = std::move(_vertices);
-            facet_.neighbours_.clear();
+            assert(facet_.neighbours_.empty());
             facet_.neighbours_.insert(_neighbour);
             set_hyperplane_equation(facet_);
             ordered_[f].insert(std::cbegin(facet_.vertices_),
@@ -477,6 +476,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         if (basis_.size() != dimension_ + 1) {
             return basis_; // can't find linearly independent (d + 1) point
         }
+        // simplex construction
         bool inward_ = (zero < hypervolume_); // is top oriented?
         auto const vbeg = std::cbegin(basis_);
         auto const vend = std::cend(basis_);
@@ -508,9 +508,13 @@ public : // largest possible simplex heuristic, convex hull algorithm
     void
     create_convex_hull()
     {
+        assert(facets_.size() == dimension_ + 1);
+        assert(ordered_.size() == dimension_ + 1);
+        assert(removed_facets_.empty());
         point_list outside_;
-        facet_set visited_;
-        facet_unordered_set viewable_;
+        facet_set visited_; // makes finding of visible facets in pravo output-sensitive
+        auto const vend = std::end(visited_);
+        facet_deque viewable_;
         facet_unordered_set visible_facets_;
         auto const vfend = std::end(visible_facets_); // not invalidated till the end
         facet_set neighbours_;
@@ -523,25 +527,25 @@ public : // largest possible simplex heuristic, convex hull algorithm
             size_type const apex = best_facet_.outside_.front();
             best_facet_.outside_.pop_front();
             point const & apex_ = points_[apex];
-            visible_facets_.clear();
+            assert(visible_facets_.empty());
             visible_facets_.insert(best_facet);
             { // find visible facets
                 assert(visited_.empty());
                 assert(viewable_.empty());
-                viewable_.insert(std::cbegin(best_facet_.neighbours_),
-                                 std::cend(best_facet_.neighbours_));
+                viewable_.assign(std::cbegin(best_facet_.neighbours_), std::cend(best_facet_.neighbours_));
                 while (!viewable_.empty()) {
-                    auto const first = std::cbegin(viewable_);
-                    size_type const f = *first;
-                    facet const & watchable_ = facets_[f];
+                    size_type const inner = viewable_.front();
+                    viewable_.pop_front();
+                    facet const & watchable_ = facets_[inner];
                     if (eps < watchable_.distance(apex_)) {
-                        visible_facets_.insert(f);
-                        std::set_difference(std::cbegin(watchable_.neighbours_), std::cend(watchable_.neighbours_),
-                                            std::cbegin(visited_), std::cend(visited_),
-                                            std::inserter(viewable_, std::end(viewable_)));
+                        visible_facets_.insert(inner);
+                        for (size_type const neighbour : watchable_.neighbours_) {
+                            if (visited_.find(neighbour) != vend) {
+                                viewable_.push_back(neighbour);
+                            }
+                        }
                     }
-                    visited_.insert(f);
-                    viewable_.erase(first);
+                    visited_.insert(inner);
                 }
                 visited_.clear();
             }
@@ -552,9 +556,11 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 outside_.splice(outside_.cend(), std::move(visible_facet_.outside_));
                 neighbours_ = std::move(visible_facet_.neighbours_);
                 unrank(visible_facet);
-                removed_facets_.insert(visible_facet);
-                visible_facet_.coplanar_.clear();
-                ordered_[visible_facet].clear();
+                { // remove facet
+                    removed_facets_.insert(visible_facet);
+                    visible_facet_.coplanar_.clear();
+                    ordered_[visible_facet].clear();
+                }
                 for (size_type const neighbour : neighbours_) {
                     if (visible_facets_.find(neighbour) == vfend) {
                         facet & horizon_facet_ = facets_[neighbour];
@@ -576,10 +582,11 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         newfacets_.push_back(newfacet);
                         facet_set & horizon_neighbours_ = horizon_facet_.neighbours_;
                         horizon_neighbours_.erase(visible_facet);
-                        horizon_neighbours_.insert(std::cend(horizon_neighbours_), newfacet);
+                        horizon_neighbours_.insert(newfacet);
                     }
                 }
             }
+            visible_facets_.clear();
             adjacency(newfacets_);
             for (size_type const newfacet : newfacets_) {
                 rank(partition(facets_[newfacet], outside_), newfacet);
