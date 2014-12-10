@@ -395,12 +395,12 @@ private :
         auto const nend = std::cend(_newfacets);
         for (auto first = std::cbegin(_newfacets); first != nend; ++first) {
             size_type const f = *first;
-            point_set & first_ = ordered_[f];
-            auto const lbeg = std::cbegin(first_);
-            auto const lend = std::cend(first_);
             facet & first_facet_ = facets_[f];
             size_type neighbours_count = first_facet_.neighbours_.size();
             if (neighbours_count < dimension_) {
+                point_set & first_ = ordered_[f];
+                auto const lbeg = std::cbegin(first_);
+                auto const lend = std::cend(first_);
                 for (auto second = std::next(first); second != nend; ++second) {
                     size_type const s = *second;
                     point_set & second_ = ordered_[s];
