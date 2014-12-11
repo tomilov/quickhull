@@ -18,8 +18,9 @@ CONFIG(debug, debug|release) {
     DEFINES += _GLIBCXX_DEBUG=1
 }
 
-QMAKE_CXXFLAGS_DEBUG += -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls
-#QMAKE_LFLAGS_DEBUG   +=
+QMAKE_CXXFLAGS_RELEASE += -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls
+QMAKE_CXXFLAGS_RELEASE += -gline-tables-only
+QMAKE_LFLAGS_RELEASE   += -gline-tables-only
 
 win32 {
     CONFIG += console
