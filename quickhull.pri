@@ -21,6 +21,7 @@ CONFIG(debug, debug|release) {
 QMAKE_CXXFLAGS_RELEASE += -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls
 QMAKE_CXXFLAGS_RELEASE += -gline-tables-only
 QMAKE_LFLAGS_RELEASE   += -gline-tables-only
+#QMAKE_LFLAGS_RELEASE   += -Wl,--no-as-needed -lprofiler -Wl,--as-needed
 
 win32 {
     CONFIG += console

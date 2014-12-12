@@ -16,6 +16,8 @@
 #include <cmath>
 #include <cassert>
 
+#define NIEGHBOURS_SET 1
+
 template< typename points, typename point = typename points::value_type, typename value_type = typename point::value_type >
 struct quick_hull
 {
@@ -48,12 +50,15 @@ struct quick_hull
         shadow_matrix_.back().resize(dimension_);
     }
 
+    using point_array = std::vector< size_type >;
     using point_list = std::list< size_type >;
-    using facet_unordered_set = std::unordered_set< size_type >;
     using facet_vector = std::vector< size_type >;
     using facet_deque = std::deque< size_type >;
-    using point_array = std::vector< size_type >;
-    using point_deque = std::deque< size_type >;
+    using facet_unordered_set = std::unordered_set< size_type >;
+
+#if NIEGHBOURS_SET
+    using facet_set = std::set< size_type >;
+#endif
 
     struct facet // (d - 1)-dimensional face
     {
@@ -61,7 +66,11 @@ struct quick_hull
         using normal = std::valarray< value_type >;
 
         point_array vertices_; // d points (oriented)
+#if NIEGHBOURS_SET
+        facet_set neighbours_;
+#else
         facet_vector neighbours_;
+#endif
         point_list outside_; // if empty, then is convex hull's facet, else the first point (i.e. outside_.front()) is the furthest point from this facet
 
         // hyperplane equation
@@ -74,8 +83,12 @@ struct quick_hull
         {
             vertices_ = std::move(_vertices);
             size_type const dimension_ = vertices_.size();
+#if NIEGHBOURS_SET
+            neighbours_.insert(_neighbour);
+#else
             neighbours_.reserve(dimension_);
             neighbours_.push_back(_neighbour);
+#endif
             normal_.resize(dimension_);
         }
 
@@ -92,7 +105,10 @@ struct quick_hull
         {
             vertices_.insert(std::cend(vertices_), _middle, _last);
             size_type const dimension_ = vertices_.size();
+#if NIEGHBOURS_SET
+#else
             neighbours_.reserve(dimension_);
+#endif
             normal_.resize(dimension_);
         }
 
@@ -404,7 +420,7 @@ private :
         auto const nend = std::cend(_newfacets);
         for (auto first = std::cbegin(_newfacets); first != nend; ++first) {
             size_type const f = *first;
-            point_array & first_ = ordered_[f];
+            point_array  const & first_ = ordered_[f];
             auto const lbeg = std::cbegin(first_);
             auto const lend = std::cend(first_);
             facet & first_facet_ = facets_[f];
@@ -412,7 +428,7 @@ private :
             if (neighbours_count < dimension_) {
                 for (auto second = std::next(first); second != nend; ++second) {
                     size_type const s = *second;
-                    point_array & second_ = ordered_[s];
+                    point_array const & second_ = ordered_[s];
                     auto const rend = std::cend(second_);
                     auto r = std::cbegin(second_);
                     auto l = lbeg;
@@ -445,17 +461,30 @@ private :
                     }
                     if (lgood != ((l != lend) && (++l == lend))) {
                         if (rgood != ((r != rend) && (++r == rend))) {
+                            assert(std::find(std::begin(first_facet_.neighbours_), std::end(first_facet_.neighbours_), s) == std::end(first_facet_.neighbours_));
+                            assert(std::find(std::begin(facets_[s].neighbours_), std::end(facets_[s].neighbours_), f) == std::end(facets_[s].neighbours_));
+#if NIEGHBOURS_SET
+                            first_facet_.neighbours_.insert(s);
+                            facets_[s].neighbours_.insert(f);
+#else
                             first_facet_.neighbours_.push_back(s);
                             facets_[s].neighbours_.push_back(f);
+#endif
                             if (!(++neighbours_count < dimension_)) {
+#if NIEGHBOURS_SET
+#else
                                 std::sort(std::begin(first_facet_.neighbours_), std::end(first_facet_.neighbours_));
+#endif
                                 break;
                             }
                         }
                     }
                 }
             } else {
+#if NIEGHBOURS_SET
+#else
                 std::sort(std::begin(first_facet_.neighbours_), std::end(first_facet_.neighbours_));
+#endif
             }
         }
     }
@@ -467,7 +496,7 @@ private :
     bool
     is_invisible(size_type const _facet) const
     {
-        return (0 == bth_facets_.count(_facet)) && (0 == not_bth_facets_.count(_facet));
+        return (0 == not_bth_facets_.count(_facet)) && (0 == bth_facets_.count(_facet));
     }
 
     bool
@@ -507,18 +536,39 @@ private :
         not_bth_facets_.clear();
     }
 
-    bool
-    replace_neighbour(size_type const _facet, size_type const _source, size_type const _destination)
+    void // http://stackoverflow.com/questions/27438798/
+    replace_neighbour(size_type const _facet, size_type const _from, size_type const _to)
     {
+#if NIEGHBOURS_SET
+        facet_set & neighbours_ = facets_[_facet].neighbours_;
+        neighbours_.erase(_from);
+        neighbours_.insert(_to);
+#else
         facet_vector & neighbours_ = facets_[_facet].neighbours_;
         for (size_type & neighbour_ : neighbours_) {
-            if (neighbour_ == _source) {
-                neighbour_ = _destination;
+            if (neighbour_ == _from) {
+                neighbour_ = _to;
                 std::sort(std::begin(neighbours_), std::end(neighbours_));
-                return true;
+                return;
             }
-        }
-        return false;
+        }/*
+        auto const beg = std::begin(neighbours_);
+        auto const end = std::end(neighbours_);
+        auto const from = std::lower_bound(beg, end, _from);
+        assert(from != end);
+        auto const mid = std::next(from);
+        if (_from < _to) {
+            auto const to = std::lower_bound(from, end, _to);
+            *from = _to;
+            std::rotate(from, mid, to);
+        } else if (_to < _from) {
+            auto const to = std::lower_bound(beg, mid, _to);
+            *from = _to;
+            std::rotate(to, from, mid);
+        } else {
+            *from = _to;
+        }*/
+#endif
     }
 
 public : // largest possible simplex heuristic, convex hull algorithm
@@ -568,10 +618,18 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         { // adjacency
             for (size_type i = 0; i <= dimension_; ++i) {
+#if NIEGHBOURS_SET
+                facet_set & neighbours_ = facets_[i].neighbours_;
+#else
                 facet_vector & neighbours_ = facets_[i].neighbours_;
+#endif
                 for (size_type j = 0; j <= dimension_; ++j) {
                     if (i != j) {
+#if NIEGHBOURS_SET
+                        neighbours_.insert(j);
+#else
                         neighbours_.push_back(j);
+#endif
                     }
                 }
             }
@@ -587,7 +645,11 @@ public : // largest possible simplex heuristic, convex hull algorithm
         assert(removed_facets_.empty());
         point_list outside_;
         point_array vertices_;
+#if NIEGHBOURS_SET
+        facet_set neighbours_;
+#else
         facet_vector neighbours_;
+#endif
         point_array ridge_; // horizon ridge + furthest point = new facet
         facet_deque newfacets_;
         for (size_type best_facet = get_best_facet(); best_facet != facets_.size(); best_facet = get_best_facet()) {
