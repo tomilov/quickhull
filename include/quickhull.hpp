@@ -404,17 +404,17 @@ private :
     void
     adjacency(facet_deque const & _newfacets)
     {
-        auto const nend = std::cend(_newfacets);
-        for (auto first = std::cbegin(_newfacets); first != nend; ++first) {
-            size_type const f = *first;
+        size_type const newfacets_count = _newfacets.size();
+        for (size_type i = 0; i < newfacets_count; ++i) {
+            size_type const f = _newfacets[i];
             point_set  const & first_ = ordered_[f];
             auto const lbeg = std::cbegin(first_);
             auto const lend = std::cend(first_);
             facet & first_facet_ = facets_[f];
             size_type neighbours_count = first_facet_.neighbours_.size();
             if (neighbours_count < dimension_) {
-                for (auto second = std::next(first); second != nend; ++second) {
-                    size_type const s = *second;
+                for (auto j = i; j < newfacets_count; ++j) {
+                    size_type const s = _newfacets[j];
                     point_set const & second_ = ordered_[s];
                     auto const rend = std::cend(second_);
                     auto r = std::cbegin(second_);
@@ -448,19 +448,14 @@ private :
                     }
                     if (lgood != ((l != lend) && (++l == lend))) {
                         if (rgood != ((r != rend) && (++r == rend))) {
-                            assert(std::find(std::begin(first_facet_.neighbours_), std::end(first_facet_.neighbours_), s) == std::end(first_facet_.neighbours_));
-                            assert(std::find(std::begin(facets_[s].neighbours_), std::end(facets_[s].neighbours_), f) == std::end(facets_[s].neighbours_));
                             first_facet_.neighbours_.push_back(s);
                             facets_[s].neighbours_.push_back(f);
                             if (!(++neighbours_count < dimension_)) {
-                                std::sort(std::begin(first_facet_.neighbours_), std::end(first_facet_.neighbours_));
                                 break;
                             }
                         }
                     }
                 }
-            } else {
-                std::sort(std::begin(first_facet_.neighbours_), std::end(first_facet_.neighbours_));
             }
         }
     }
@@ -512,26 +507,18 @@ private :
         not_bth_facets_.clear();
     }
 
-    void // http://stackoverflow.com/questions/27438798/
+    void
     replace_neighbour(size_type const _facet, size_type const _from, size_type const _to)
     {
         if (_from == _to) {
             return;
         }
         facet_vector & neighbours_ = facets_[_facet].neighbours_;
-        auto const beg = std::begin(neighbours_);
-        auto const end = std::end(neighbours_);
-        auto const from = std::lower_bound(beg, end, _from);
-        assert(from != end);
-        auto const mid = std::next(from);
-        if (_from < _to) {
-            auto const to = std::lower_bound(from, end, _to);
-            *from = _to;
-            std::rotate(from, mid, to);
-        } else if (_to < _from) {
-            auto const to = std::lower_bound(beg, mid, _to);
-            *from = _to;
-            std::rotate(to, from, mid);
+        for (size_type & neighbour_ : neighbours_) {
+            if (neighbour_ == _from) {
+                neighbour_ = _to;
+                return;
+            }
         }
     }
 
