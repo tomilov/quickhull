@@ -18,7 +18,7 @@ CONFIG(debug, debug|release) {
     DEFINES += _GLIBCXX_DEBUG=1
 }
 
-QMAKE_CXXFLAGS_RELEASE += -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls
+#QMAKE_CXXFLAGS_RELEASE += -fno-inline -fno-omit-frame-pointer -fno-optimize-sibling-calls
 QMAKE_CXXFLAGS_RELEASE += -gline-tables-only
 QMAKE_LFLAGS_RELEASE   += -gline-tables-only
 #QMAKE_LFLAGS_RELEASE   += -Wl,--no-as-needed -lprofiler -Wl,--as-needed
