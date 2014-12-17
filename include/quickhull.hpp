@@ -15,7 +15,9 @@
 #include <cmath>
 #include <cassert>
 
-template< typename points, typename point = typename points::value_type, typename value_type = typename point::value_type >
+template< typename points,
+          typename point = typename points::value_type,
+          typename coordinate = typename point::value_type >
 struct quick_hull
 {
 
@@ -23,11 +25,11 @@ struct quick_hull
 
     size_type const dimension_;
     points const & points_;
-    value_type const eps;
+    coordinate const eps;
 
     quick_hull(size_type const _dimension,
                points const & _points,
-               value_type const & _eps = std::numeric_limits< value_type >::epsilon())
+               coordinate const & _eps = std::numeric_limits< coordinate >::epsilon())
         : dimension_(_dimension)
         , points_(_points)
         , eps(_eps)
@@ -54,7 +56,7 @@ struct quick_hull
     struct facet // (d - 1)-dimensional face
     {
 
-        using normal = std::valarray< value_type >;
+        using normal = std::valarray< coordinate >;
 
         point_array vertices_; // d points (oriented)
         point_list outside_; // if empty, then is convex hull's facet, else the first point (i.e. outside_.front()) is the furthest point from this facet
@@ -62,7 +64,7 @@ struct quick_hull
 
         // hyperplane equation
         normal normal_; // components of normalized normal vector
-        value_type D; // distance fromt the origin to the hyperplane
+        coordinate D; // distance fromt the origin to the hyperplane
 
         void
         init(point_array && _vertices,
@@ -70,7 +72,6 @@ struct quick_hull
         {
             vertices_ = std::move(_vertices);
             size_type const dimension_ = vertices_.size();
-            //neighbours_.insert(_neighbour);
             neighbours_.reserve(dimension_);
             neighbours_.push_back(_neighbour);
             normal_.resize(dimension_);
@@ -93,7 +94,7 @@ struct quick_hull
             normal_.resize(dimension_);
         }
 
-        value_type
+        coordinate
         distance(point const & _point) const
         {
             return std::inner_product(std::cbegin(normal_), std::cend(normal_), std::cbegin(_point), D);
@@ -106,7 +107,7 @@ struct quick_hull
     facets_storage facets_;
     point_list internal_set_;
 
-    value_type
+    coordinate
     cos_of_dihedral_angle(facet const & _this, facet const & _other) const // for faces merging in the future
     {
         return std::inner_product(std::cbegin(_this.normal_), std::cend(_this.normal_), std::cbegin(_other.normal_), zero);
@@ -116,10 +117,10 @@ private :
 
     // math (simple functions, matrices, etc):
 
-    value_type const zero = value_type(0);
-    value_type const one = value_type(1);
+    coordinate const zero = coordinate(0);
+    coordinate const one = coordinate(1);
 
-    using row = std::valarray< value_type >;
+    using row = std::valarray< coordinate >;
     using matrix = std::vector< row >;
 
     matrix matrix_;
@@ -141,9 +142,7 @@ private :
     void
     restore_matrix()
     {
-        for (size_type r = 0; r < dimension_; ++r) {
-            matrix_[r] = shadow_matrix_[r];
-        }
+        matrix_ = shadow_matrix_;
     }
 
     void
@@ -174,17 +173,17 @@ private :
         }
     }
 
-    value_type
+    coordinate
     det(matrix & _matrix, size_type const _size) // based on LU factorization
     {
-        value_type det_ = one;
+        coordinate det_ = one;
         for (size_type i = 0; i < _size; ++i) {
             size_type p = i;
             using std::abs;
-            value_type max_ = abs(_matrix[p][i]);
+            coordinate max_ = abs(_matrix[p][i]);
             size_type pivot = p;
             while (++p < _size) {
-                value_type y_ = abs(_matrix[p][i]);
+                coordinate y_ = abs(_matrix[p][i]);
                 if (max_ < y_) {
                     max_ = std::move(y_);
                     pivot = p;
@@ -198,15 +197,15 @@ private :
                 det_ = -det_; // each permutation flips sign of det
                 ri_.swap(_matrix[pivot]);
             }
-            value_type & dia_ = ri_[i];
-            value_type const inv_ = one / dia_;
+            coordinate & dia_ = ri_[i];
+            coordinate const inv_ = one / dia_;
             det_ *= std::move(dia_); // det is multiple of diagonal elements
             for (size_type j = 1 + i; j < _size; ++j) {
                 _matrix[j][i] *= inv_;
             }
             for (size_type a = 1 + i; a < _size; ++a) {
                 row & a_ = minor_[a - 1];
-                value_type const & ai_ = _matrix[a][i];
+                coordinate const & ai_ = _matrix[a][i];
                 for (size_type b = 1 + i; b < _size; ++ b) {
                     a_[b - 1] = ai_ * ri_[b];
                 }
@@ -222,7 +221,7 @@ private :
         return det_;
     }
 
-    value_type
+    coordinate
     det()
     {
         return det(matrix_, dimension_);
@@ -240,10 +239,10 @@ private :
             std::copy_n(std::cbegin(points_[_facet.vertices_[r]]), dimension_, std::begin(shadow_matrix_[r]));
         }
         transpose();
-        value_type N = zero;
+        coordinate N = zero;
         for (size_type i = 0; i < dimension_; ++i) {
             restore_matrix(i);
-            value_type n = det();
+            coordinate n = det();
             N += n * n;
             _facet.normal_[i] = std::move(n);
         }
@@ -285,7 +284,7 @@ private :
     }
 
     // http://math.stackexchange.com/questions/822741/
-    value_type
+    coordinate
     hypervolume(point_list const & _vertices, point const & _apex)
     {
         size_type const rows_count = _vertices.size();
@@ -308,21 +307,21 @@ private :
         }
     }
 
-    value_type
+    coordinate
     hypervolume(point_list const & _vertices, size_type const _apex)
     {
         return hypervolume(_vertices, points_[_apex]);
     }
 
-    value_type
+    coordinate
     steal_best(point_list & _from, point_list & _to)
     {
-        using std::abs;
-        value_type hypervolume_ = zero;
+        coordinate hypervolume_ = zero;
         auto const end = std::cend(_from);
         auto furthest = end;
         for (auto it = std::cbegin(_from); it != end; ++it) {
-            value_type v_ = hypervolume(_to, *it);
+            coordinate v_ = hypervolume(_to, *it);
+            using std::abs;
             if (abs(hypervolume_) < abs(v_)) {
                 hypervolume_ = std::move(v_);
                 furthest = it;
@@ -334,14 +333,14 @@ private :
         return hypervolume_;
     }
 
-    using ranking = std::multimap< value_type, size_type >;
+    using ranking = std::multimap< coordinate, size_type >;
     using ranking_meta = std::unordered_map< size_type, typename ranking::iterator >;
 
     ranking ranking_;
     ranking_meta ranking_meta_;
 
     void
-    rank(value_type && _orientation, size_type const _facet)
+    rank(coordinate && _orientation, size_type const _facet)
     {
         if (eps < _orientation) {
             ranking_meta_.emplace(_facet, ranking_.emplace(std::move(_orientation), _facet));
@@ -370,16 +369,16 @@ private :
         }
     }
 
-    value_type
+    coordinate
     partition(facet & _facet, point_list & _points)
     {
         auto it = std::cbegin(_points);
         auto const end = std::cend(_points);
-        value_type distance_ = zero;
+        coordinate distance_ = zero;
         while (it != end) {
             auto const next = std::next(it);
             size_type const p = *it;
-            value_type d_ = _facet.distance(points_[p]);
+            coordinate d_ = _facet.distance(points_[p]);
             if (eps < d_) {
                 if ((distance_ < d_) || _facet.outside_.empty()) {
                     distance_ = std::move(d_);
@@ -538,7 +537,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 return basis_; // can't find (i + 1) linearly independent point
             }
         }
-        value_type hypervolume_ = steal_best(internal_set_, basis_);
+        coordinate hypervolume_ = steal_best(internal_set_, basis_);
         if (basis_.size() != dimension_ + 1) {
             return basis_; // can't find linearly independent (d + 1) point
         }
@@ -591,6 +590,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             size_type const apex = best_facet_outsides_.front();
             best_facet_outsides_.pop_front();
             process_visibles(best_facet, points_[apex]);
+            assert(outside_.empty());
             for (size_type const not_bth_facet : not_bth_facets_) {
                 facet & facet_ = facets_[not_bth_facet];
                 outside_.splice(outside_.cend(), std::move(facet_.outside_));
@@ -632,7 +632,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
             newfacets_.clear();
-            internal_set_.splice(std::cend(internal_set_), std::move(outside_));
+            outside_.clear();
         }
         assert(outside_.empty());
         assert(ranking_.empty());
