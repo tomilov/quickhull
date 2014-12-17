@@ -15,7 +15,9 @@
 #include <cmath>
 #include <cassert>
 
-template< typename points, typename point = typename points::value_type, typename value_type = typename point::value_type >
+template< typename points,
+          typename point = typename points::value_type,
+          typename value_type = typename point::value_type >
 struct quick_hull
 {
 
@@ -70,7 +72,6 @@ struct quick_hull
         {
             vertices_ = std::move(_vertices);
             size_type const dimension_ = vertices_.size();
-            //neighbours_.insert(_neighbour);
             neighbours_.reserve(dimension_);
             neighbours_.push_back(_neighbour);
             normal_.resize(dimension_);
@@ -317,12 +318,12 @@ private :
     value_type
     steal_best(point_list & _from, point_list & _to)
     {
-        using std::abs;
         value_type hypervolume_ = zero;
         auto const end = std::cend(_from);
         auto furthest = end;
         for (auto it = std::cbegin(_from); it != end; ++it) {
             value_type v_ = hypervolume(_to, *it);
+            using std::abs;
             if (abs(hypervolume_) < abs(v_)) {
                 hypervolume_ = std::move(v_);
                 furthest = it;
@@ -591,6 +592,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             size_type const apex = best_facet_outsides_.front();
             best_facet_outsides_.pop_front();
             process_visibles(best_facet, points_[apex]);
+            assert(outside_.empty());
             for (size_type const not_bth_facet : not_bth_facets_) {
                 facet & facet_ = facets_[not_bth_facet];
                 outside_.splice(outside_.cend(), std::move(facet_.outside_));
@@ -632,7 +634,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
             newfacets_.clear();
-            internal_set_.splice(std::cend(internal_set_), std::move(outside_));
+            outside_.clear();
         }
         assert(outside_.empty());
         assert(ranking_.empty());

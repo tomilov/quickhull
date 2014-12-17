@@ -97,20 +97,7 @@ main(int argc, char * argv[])
             steady_clock::time_point const start = steady_clock::now();
             size_type const basis_size_ = quick_hull_.create_simplex().size();
             steady_clock::time_point const end = steady_clock::now();
-            std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";/*
-            size_type f = 0;
-            for (typename quick_hull_type::facet const & facet_ : quick_hull_.facets_) {
-                std::cerr << "facet's #" << f << " vertices:" << std::endl;
-                for (size_type const vertex_ : facet_.vertices_) {
-                    std::cerr << vertex_ << std::endl;
-                }
-                std::cerr << "neighbours:" << std::endl;
-                for (size_type const neighbour_ : facet_.neighbours_) {
-                    std::cerr << neighbour_ << std::endl;
-                }
-                std::cerr << std::endl;
-                ++f;
-            }*/
+            std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
             if (basis_size_ != dimension_ + 1) {
                 std::cerr << "cannot create a simplex: size of basis: " << basis_size_ << std::endl;
                 return EXIT_FAILURE;
