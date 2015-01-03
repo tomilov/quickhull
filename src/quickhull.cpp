@@ -52,8 +52,8 @@ main(int argc, char * argv[])
         }
         iss_.clear();
     }
-    if (!std::getline(in_, line_))
-        std::cout << std::flush;{
+    if (!std::getline(in_, line_)) {
+        std::cout << std::flush;
         std::cerr << "io: count line" << std::endl;
         return EXIT_FAILURE;
     }
