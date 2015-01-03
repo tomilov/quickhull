@@ -143,9 +143,7 @@ private :
     void
     restore_matrix()
     {
-        for (size_type r = 0; r < dimension_; ++r) {
-            matrix_[r] = shadow_matrix_[r];
-        }
+        matrix_ = shadow_matrix_;
     }
 
     void
