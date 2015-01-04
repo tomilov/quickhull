@@ -21,6 +21,7 @@ main(int argc, char * argv[])
     if (!(argc < 2)) {
         ifs_.open(argv[1]);
         if (!ifs_.is_open()) {
+            std::cout << std::flush;
             std::cerr << "cannot open the file" << std::endl;
             return EXIT_FAILURE;
         }
@@ -29,6 +30,7 @@ main(int argc, char * argv[])
     std::cout << "#read file: " << ((argc < 2) ? "stdin" : argv[1]) << '\n';
     std::string line_;
     if (!std::getline(in_, line_)) {
+        std::cout << std::flush;
         std::cerr << "io: dimension line" << std::endl;
         return EXIT_FAILURE;
     }
@@ -37,6 +39,7 @@ main(int argc, char * argv[])
     {
         iss_.str(line_);
         if (!(iss_ >> dimension_)) {
+            std::cout << std::flush;
             std::cerr << "io: dimension" << std::endl;
             return EXIT_FAILURE;
         }
@@ -50,24 +53,32 @@ main(int argc, char * argv[])
         iss_.clear();
     }
     if (!std::getline(in_, line_)) {
+        std::cout << std::flush;
         std::cerr << "io: count line" << std::endl;
         return EXIT_FAILURE;
     }
-    using G = double;
-    using point = std::deque< G >;
+    using value_type = double;
+    using point = std::deque< value_type >;
     using points = std::deque< point >;
-    size_type count_;
+    size_type count_ = 0;
     {
         iss_.str(line_);
         if (!(iss_ >> count_)) {
+            std::cout << std::flush;
             std::cerr << "io: count" << std::endl;
             return EXIT_FAILURE;
         }
         iss_.clear();
     }
+    if (!(dimension_ < count_)) {
+        std::cout << std::flush;
+        std::cerr << "io: points count is less than or equal than dimensionality" << std::endl;
+        return EXIT_FAILURE;
+    }
     points points_(count_);
     for (size_type i = 0; i < count_; ++i) {
         if (!std::getline(in_, line_)) {
+            std::cout << std::flush;
             std::cerr << "io: line count error" << std::endl;
             return EXIT_FAILURE;
         }
@@ -77,6 +88,7 @@ main(int argc, char * argv[])
             iss_.str(line_);
             for (size_type j = 0; j < dimension_; ++j) {
                 if (!(iss_ >> point_[j])) {
+                    std::cout << std::flush;
                     std::cerr << "io: bad value at line " << j << " of data" << std::endl;
                     return EXIT_FAILURE;
                 }
@@ -97,21 +109,9 @@ main(int argc, char * argv[])
             steady_clock::time_point const start = steady_clock::now();
             size_type const basis_size_ = quick_hull_.create_simplex().size();
             steady_clock::time_point const end = steady_clock::now();
-            std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";/*
-            size_type f = 0;
-            for (typename quick_hull_type::facet const & facet_ : quick_hull_.facets_) {
-                std::cerr << "facet's #" << f << " vertices:" << std::endl;
-                for (size_type const vertex_ : facet_.vertices_) {
-                    std::cerr << vertex_ << std::endl;
-                }
-                std::cerr << "neighbours:" << std::endl;
-                for (size_type const neighbour_ : facet_.neighbours_) {
-                    std::cerr << neighbour_ << std::endl;
-                }
-                std::cerr << std::endl;
-                ++f;
-            }*/
+            std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
             if (basis_size_ != dimension_ + 1) {
+                std::cout << std::flush;
                 std::cerr << "cannot create a simplex: size of basis: " << basis_size_ << std::endl;
                 return EXIT_FAILURE;
             }
@@ -131,10 +131,7 @@ main(int argc, char * argv[])
     os_ << "set autoscale\n";
     os_ << "set view equal xyz\n";
     switch (dimension_) {
-    case 1 : {
-        os_ << "plot";
-        break;
-    }
+    case 1 :
     case 2 : {
         os_ << "plot";
         break;
@@ -144,6 +141,7 @@ main(int argc, char * argv[])
         break;
     }
     default : {
+        std::cout << std::flush;
         std::cerr << "dimensionality value (" << dimension_ << ") is out of supported range: cannot generate output" << std::endl;
         return EXIT_FAILURE;
     }
@@ -155,7 +153,7 @@ main(int argc, char * argv[])
     os_ << ";\n";
     for (size_type i = 0; i < count_; ++i) {
         point const & point_ = points_[i];
-        for (G const & coordinate_ : point_) {
+        for (value_type const & coordinate_ : point_) {
             os_ << coordinate_ << ' ';
         }
         os_ << '\n';
@@ -163,7 +161,7 @@ main(int argc, char * argv[])
     os_ << "e\n";
     for (size_type i = 0; i < count_; ++i) {
         point const & point_ = points_[i];
-        for (G const & coordinate_ : point_) {
+        for (value_type const & coordinate_ : point_) {
             os_ << coordinate_ << ' ';
         }
         os_ << i << '\n';
@@ -172,13 +170,13 @@ main(int argc, char * argv[])
     for (size_type i = 0; i < facets_count_; ++i) {
         auto const & vertices_ = facets_[i].vertices_;
         for (size_type const vertex_ : vertices_) {
-            for (G const & coordinate_ : points_[vertex_]) {
+            for (value_type const & coordinate_ : points_[vertex_]) {
                 os_ << coordinate_ << ' ';
             }
             os_ << '\n';
         }
         point const & first_vertex_ = points_[vertices_.front()];
-        for (G const & coordinate_ : first_vertex_) {
+        for (value_type const & coordinate_ : first_vertex_) {
             os_ << coordinate_ << ' ';
         }
         os_ << "\ne\n";

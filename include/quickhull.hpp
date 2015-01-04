@@ -15,7 +15,9 @@
 #include <cmath>
 #include <cassert>
 
-template< typename points, typename point = typename points::value_type, typename value_type = typename point::value_type >
+template< typename points,
+          typename point = typename points::value_type,
+          typename value_type = typename point::value_type >
 struct quick_hull
 {
 
@@ -34,6 +36,7 @@ struct quick_hull
         , matrix_(_dimension)
         , shadow_matrix_(_dimension)
         , minor_()
+        , origin_(zero, _dimension)
     {
         assert(!(_eps < zero));
         size_type const minor_size = dimension_ - 1;
@@ -62,7 +65,7 @@ struct quick_hull
 
         // hyperplane equation
         normal normal_; // components of normalized normal vector
-        value_type D; // distance fromt the origin to the hyperplane
+        value_type D; // distance from the origin to the hyperplane
 
         void
         init(point_array && _vertices,
@@ -70,7 +73,6 @@ struct quick_hull
         {
             vertices_ = std::move(_vertices);
             size_type const dimension_ = vertices_.size();
-            //neighbours_.insert(_neighbour);
             neighbours_.reserve(dimension_);
             neighbours_.push_back(_neighbour);
             normal_.resize(dimension_);
@@ -104,10 +106,9 @@ struct quick_hull
     using facets_storage = std::vector< facet >;
 
     facets_storage facets_;
-    point_list internal_set_;
 
     value_type
-    cos_of_dihedral_angle(facet const & _this, facet const & _other) const // for faces merging in the future
+    cos_of_dihedral_angle(facet const & _this, facet const & _other) const
     {
         return std::inner_product(std::cbegin(_this.normal_), std::cend(_this.normal_), std::cbegin(_other.normal_), zero);
     }
@@ -125,10 +126,11 @@ private :
     matrix matrix_;
     matrix shadow_matrix_;
     matrix minor_;
+    row origin_;
 
     void
     transpose()
-    { // to cheaper filling columns with ones
+    { // transpose to cheaper filling columns with ones
         for (size_type r = 0; r < dimension_; ++r) {
             row & row_ = shadow_matrix_[r];
             for (size_type c = 1 + r; c < dimension_; ++c) {
@@ -141,20 +143,18 @@ private :
     void
     restore_matrix()
     {
-        for (size_type r = 0; r < dimension_; ++r) {
-            matrix_[r] = shadow_matrix_[r];
-        }
+        matrix_ = shadow_matrix_;
     }
 
     void
-    restore_matrix(size_type const _identity) // load matrix from storage with replacing of _identity column with ones
+    restore_matrix(size_type const _identity) // load matrix from storage and replace _identity column with ones
     {
-        for (size_type r = 0; r < dimension_; ++r) { // col
-            row & row_ = matrix_[r];
-            if (r == _identity) {
-                row_ = one;
+        for (size_type c = 0; c < dimension_; ++c) {
+            row & col_ = matrix_[c];
+            if (c == _identity) {
+                col_ = one;
             } else {
-                row_ = shadow_matrix_[r];
+                col_ = shadow_matrix_[c];
             }
         }
     }
@@ -175,7 +175,7 @@ private :
     }
 
     value_type
-    det(matrix & _matrix, size_type const _size) // based on LU factorization
+    det(matrix & _matrix, size_type const _size) // based on LUP decomposition (complexity is 2 * n^3 / 3 + O(n^2) vs 4 * n^3 / 3 + O(n^2) for QR decomposition via Householder reflections)
     {
         value_type det_ = one;
         for (size_type i = 0; i < _size; ++i) {
@@ -286,52 +286,129 @@ private :
 
     // http://math.stackexchange.com/questions/822741/
     value_type
-    hypervolume(point_list const & _vertices, point const & _apex)
-    {
-        size_type const rows_count = _vertices.size();
-        assert(!(dimension_ < rows_count));
-        row & origin_ = shadow_matrix_.back();
-        std::copy_n(std::cbegin(_apex), dimension_, std::begin(origin_));
+    hypervolume(point_list const & _vertices, size_type const _rank)
+    { // volume of conv(_vertices + origin_)
+        assert(!(dimension_ < _rank));
         auto vertex = std::cbegin(_vertices);
-        for (size_type r = 0; r < rows_count; ++r) {
+        for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
             row & row_ = matrix_[r];
             std::copy_n(std::cbegin(points_[*vertex]), dimension_, std::begin(row_));
             row_ -= origin_;
             ++vertex;
         }
-        if (rows_count == dimension_) { // oriented hypervolume
+        if (_rank == dimension_) { // oriented hypervolume
             return det();
-        } else { // non-oriented rows_count-dimensional measure
-            square_matrix(rows_count);
+        } else { // non-oriented _rank-dimensional measure
+            square_matrix(_rank);
             using std::sqrt;
-            return sqrt(det(shadow_matrix_, rows_count));
+            return sqrt(det(shadow_matrix_, _rank));
         }
     }
 
     value_type
-    hypervolume(point_list const & _vertices, size_type const _apex)
+    hypervolume(point_list const & _vertices)
     {
-        return hypervolume(_vertices, points_[_apex]);
+        return hypervolume(_vertices, dimension_);
     }
 
-    value_type
+    void
+    orthogonalize(point_list const & _affine_space, size_type const _rank)
+    {
+        auto vertex = std::begin(_affine_space);
+        for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
+            row & row_ = shadow_matrix_[r];
+            std::copy_n(std::cbegin(points_[*vertex]), dimension_, std::begin(row_));
+            row_ -= origin_;
+            ++vertex;
+        }
+        for (size_type i = 0; i < _rank; ++i) { // Householder transformation
+            value_type norm_ = zero;
+            row & qri_ = shadow_matrix_[i]; // shadow_matrix_ is packed QR after
+            for (size_type j = i; j < dimension_; ++j) {
+                value_type const & qrij_ = qri_[j];
+                norm_ += qrij_ * qrij_;
+            }
+            using std::sqrt;
+            norm_ = sqrt(norm_);
+            assert(eps < norm_);
+            value_type & qrii_ = qri_[i];
+            bool const sign_ = (zero < qrii_);
+            value_type factor_ = norm_ * (norm_ + (sign_ ? qrii_ : -qrii_));
+            assert(eps < factor_);
+            factor_ = one / sqrt(std::move(factor_));
+            if (sign_) {
+                qrii_ += norm_;
+            } else {
+                qrii_ -= norm_;
+            }
+            for (size_type k = i; k < dimension_; ++k) {
+                qri_[k] *= factor_;
+            }
+            for (size_type j = i + 1; j < _rank; ++j) {
+                row & qrj_ = shadow_matrix_[j];
+                value_type s_ = zero;
+                for (size_type k = i; k < dimension_; ++k) {
+                    s_ += qri_[k] * qrj_[k];
+                }
+                for (size_type k = i; k < dimension_; ++k) {
+                    qrj_[k] -= qri_[k] * s_;
+                }
+            }
+        }
+        for (size_type i = 0; i < _rank; ++i) {
+            row & qi_ = matrix_[i]; // matrix_ is Q after
+            qi_ = zero;
+            qi_[i] = one;
+            size_type j = _rank;
+            while (0 < j) {
+                --j;
+                row & qrj_ = shadow_matrix_[j];
+                value_type s_ = zero;
+                for (size_type k = j; k < dimension_; ++k) {
+                    s_ += qrj_[k] * qi_[k];
+                }
+                for (size_type k = j; k < dimension_; ++k) {
+                    qi_[k] -= qrj_[k] * s_;
+                }
+            }
+        }
+    }
+
+    bool
     steal_best(point_list & _from, point_list & _to)
     {
-        using std::abs;
-        value_type hypervolume_ = zero;
+        assert(!_to.empty());
+        size_type const rank_ = _to.size() - 1;
+        orthogonalize(_to, rank_);
+        row & projection_ = shadow_matrix_.back(); // projection to orghogonal subspace
+        row & apex_ = shadow_matrix_.front();
+        auto const abeg = std::begin(apex_);
+        auto const aend = std::end(apex_);
+        value_type distance_ = zero;
         auto const end = std::cend(_from);
         auto furthest = end;
         for (auto it = std::cbegin(_from); it != end; ++it) {
-            value_type v_ = hypervolume(_to, *it);
-            if (abs(hypervolume_) < abs(v_)) {
-                hypervolume_ = std::move(v_);
+            std::copy_n(std::cbegin(points_[*it]), dimension_, abeg);
+            apex_ -= origin_;
+            projection_ = apex_;
+            for (size_type i = 0; i < rank_; ++i) {
+                row const & qi_ = matrix_[i];
+                projection_ -= std::inner_product(abeg, aend, std::cbegin(qi_), zero) * qi_;
+            }
+            projection_ *= projection_;
+            using std::sqrt;
+            value_type d_ = sqrt(projection_.sum()); // distance to subspace
+            if (distance_ < d_) {
+                distance_ = std::move(d_);
                 furthest = it;
             }
         }
-        if (furthest != end) {
-            _to.splice(std::cend(_to), _from, furthest);
+        if (furthest == end) {
+            return false;
         }
-        return hypervolume_;
+        std::copy_n(std::cbegin(points_[*furthest]), dimension_, std::begin(origin_));
+        _to.splice(std::cend(_to), _from, furthest);
+        return true;
     }
 
     using ranking = std::multimap< value_type, size_type >;
@@ -505,10 +582,9 @@ private :
         if (_from == _to) {
             return;
         }
-        facet_array & neighbours_ = facets_[_facet].neighbours_;
-        for (size_type & neighbour_ : neighbours_) {
-            if (neighbour_ == _from) {
-                neighbour_ = _to;
+        for (size_type & neighbour : facets_[_facet].neighbours_) {
+            if (neighbour == _from) {
+                neighbour = _to;
                 return;
             }
         }
@@ -521,29 +597,28 @@ public : // largest possible simplex heuristic, convex hull algorithm
     {
         assert(1 < dimension_);
         size_type const input_size = points_.size();
-        assert(0 < input_size);
+        point_list basis_;
+        if (!(0 < input_size)) {
+            return basis_;
+        }
+        basis_.push_back(0);
+        std::copy_n(std::cbegin(points_[0]), dimension_, std::begin(origin_));
+        point_list internal_set_;
         for (size_type i = 1; i < input_size; ++i) {
             internal_set_.push_back(i);
         }
-        point_list basis_;
-        basis_.push_back(0);
-        steal_best(internal_set_, basis_);
-        if (basis_.size() != 2) {
-            return basis_; // can't find linearly independent second point
+        if (!steal_best(internal_set_, basis_)) {
+            return basis_; // can't find affine independent second point
         }
         internal_set_.splice(std::cend(internal_set_), basis_, std::cbegin(basis_)); // rejudge 0-indexed point
-        for (size_type i = 1; i < dimension_; ++i) {
-            steal_best(internal_set_, basis_);
-            if (basis_.size() != i + 1) {
-                return basis_; // can't find (i + 1) linearly independent point
+        for (size_type i = 0; i < dimension_; ++i) {
+            if (!steal_best(internal_set_, basis_)) {
+                return basis_; // can't find (i + 2) affine independent point
             }
         }
-        value_type hypervolume_ = steal_best(internal_set_, basis_);
-        if (basis_.size() != dimension_ + 1) {
-            return basis_; // can't find linearly independent (d + 1) point
-        }
+        assert(basis_.size() == dimension_ + 1); // simplex
         // simplex construction
-        bool inward_ = (zero < hypervolume_); // is top oriented?
+        bool inward_ = (zero < hypervolume(basis_)); // is top oriented?
         auto const vbeg = std::cbegin(basis_);
         auto const vend = std::cend(basis_);
         for (auto exclusive = vend; exclusive != vbeg; --exclusive) {
@@ -552,7 +627,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             facet & facet_ = facets_.back();
             inward_ = !inward_;
             if (inward_) {
-                std::swap(facet_.vertices_.front(),
+                std::swap(facet_.vertices_.front(), // not works for dimension_ == 1
                           facet_.vertices_.back());
             }
             set_hyperplane_equation(facet_);
@@ -591,6 +666,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             size_type const apex = best_facet_outsides_.front();
             best_facet_outsides_.pop_front();
             process_visibles(best_facet, points_[apex]);
+            assert(outside_.empty());
             for (size_type const not_bth_facet : not_bth_facets_) {
                 facet & facet_ = facets_[not_bth_facet];
                 outside_.splice(outside_.cend(), std::move(facet_.outside_));
@@ -632,7 +708,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
             newfacets_.clear();
-            internal_set_.splice(std::cend(internal_set_), std::move(outside_));
+            outside_.clear();
         }
         assert(outside_.empty());
         assert(ranking_.empty());
