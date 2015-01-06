@@ -101,13 +101,15 @@ main(int argc, char * argv[])
     std::cout << "#N = " << count_ << '\n';
     using quick_hull_type = quick_hull< points >;
     quick_hull_type quick_hull_(dimension_, points_);
+    typename quick_hull_type::point_list initial_simplex_;
     {
         using std::chrono::duration_cast;
         using std::chrono::microseconds;
         using std::chrono::steady_clock;
         {
             steady_clock::time_point const start = steady_clock::now();
-            size_type const basis_size_ = quick_hull_.create_simplex().size();
+            initial_simplex_ = quick_hull_.create_simplex();
+            size_type const basis_size_ = initial_simplex_.size();
             steady_clock::time_point const end = steady_clock::now();
             std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
             if (basis_size_ != dimension_ + 1) {
@@ -146,11 +148,19 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     }
-    os_ << " '-' with points notitle, '-' with labels offset character 0, character 1 notitle";
+    os_ << " '-' with points notitle pointtype 7 pointsize 1.5 linetype 1, '-' with points notitle, '-' with labels offset character 0, character 1 notitle";
     for (size_type i = 0; i < facets_count_; ++i) {
         os_ << ", '-' with lines notitle";
     }
     os_ << ";\n";
+    for (size_type const p : initial_simplex_) {
+        point const & point_ = points_[p];
+        for (value_type const & coordinate_ : point_) {
+            os_ << coordinate_ << ' ';
+        }
+        os_ << '\n';
+    }
+    os_ << "e\n";
     for (size_type i = 0; i < count_; ++i) {
         point const & point_ = points_[i];
         for (value_type const & coordinate_ : point_) {

@@ -286,34 +286,33 @@ private :
 
     // http://math.stackexchange.com/questions/822741/
     value_type
-    hypervolume(point_list const & _vertices, size_type const _rank)
-    { // volume of conv(_vertices + origin_)
-        assert(!(dimension_ < _rank));
+    hypervolume(point_list const & _vertices)
+    { // volume of conv(_vertices)
+        assert(!_vertices.empty());
+        size_type const rank_ = _vertices.size() - 1;
+        assert(!(dimension_ < rank_));
+        assert(!_vertices.empty());
+        std::copy_n(std::cbegin(points_[_vertices.back()]), dimension_, std::begin(origin_));
         auto vertex = std::cbegin(_vertices);
-        for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
+        for (size_type r = 0; r < rank_; ++r) { // affine space -> vector space
             row & row_ = matrix_[r];
             std::copy_n(std::cbegin(points_[*vertex]), dimension_, std::begin(row_));
             row_ -= origin_;
             ++vertex;
         }
-        if (_rank == dimension_) { // oriented hypervolume
+        if (rank_ == dimension_) { // oriented hypervolume
             return det();
         } else { // non-oriented _rank-dimensional measure
-            square_matrix(_rank);
+            square_matrix(rank_);
             using std::sqrt;
-            return sqrt(det(shadow_matrix_, _rank));
+            return sqrt(det(shadow_matrix_, rank_));
         }
-    }
-
-    value_type
-    hypervolume(point_list const & _vertices)
-    {
-        return hypervolume(_vertices, dimension_);
     }
 
     void
     orthogonalize(point_list const & _affine_space, size_type const _rank)
     {
+        assert(!(dimension_ < _rank));
         auto vertex = std::begin(_affine_space);
         for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
             row & row_ = shadow_matrix_[r];
@@ -355,7 +354,7 @@ private :
                 }
             }
         }
-        for (size_type i = 0; i < _rank; ++i) {
+        for (size_type i = 0; i < _rank; ++i) { // calculating of Q
             row & qi_ = matrix_[i]; // matrix_ is Q after
             qi_ = zero;
             qi_[i] = one;
@@ -378,6 +377,7 @@ private :
     steal_best(point_list & _from, point_list & _to)
     {
         assert(!_to.empty());
+        std::copy_n(std::cbegin(points_[_to.back()]), dimension_, std::begin(origin_));
         size_type const rank_ = _to.size() - 1;
         orthogonalize(_to, rank_);
         row & projection_ = shadow_matrix_.back(); // projection to orghogonal subspace
@@ -389,7 +389,7 @@ private :
         auto furthest = end;
         for (auto it = std::cbegin(_from); it != end; ++it) {
             std::copy_n(std::cbegin(points_[*it]), dimension_, abeg);
-            apex_ -= origin_;
+            apex_ -= origin_; // turn translated space into vector space
             projection_ = apex_;
             for (size_type i = 0; i < rank_; ++i) {
                 row const & qi_ = matrix_[i];
@@ -406,7 +406,6 @@ private :
         if (furthest == end) {
             return false;
         }
-        std::copy_n(std::cbegin(points_[*furthest]), dimension_, std::begin(origin_));
         _to.splice(std::cend(_to), _from, furthest);
         return true;
     }
@@ -595,6 +594,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
     point_list
     create_simplex()
     {
+        // selection of (dimension_ + 1) affinely independent points
         assert(1 < dimension_);
         size_type const input_size = points_.size();
         point_list basis_;
@@ -602,7 +602,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
             return basis_;
         }
         basis_.push_back(0);
-        std::copy_n(std::cbegin(points_[0]), dimension_, std::begin(origin_));
         point_list internal_set_;
         for (size_type i = 1; i < input_size; ++i) {
             internal_set_.push_back(i);
