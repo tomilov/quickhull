@@ -354,7 +354,7 @@ private :
                 }
             }
         }
-        for (size_type i = 0; i < _rank; ++i) { // calculating of Q
+        for (size_type i = 0; i < _rank; ++i) { // calculation of Q
             row & qi_ = matrix_[i]; // matrix_ is Q after
             qi_ = zero;
             qi_[i] = one;
@@ -475,49 +475,51 @@ private :
         size_type const newfacets_count = _newfacets.size();
         for (size_type i = 0; i < newfacets_count; ++i) {
             size_type const f = _newfacets[i];
-            point_array const & first_ = ordered_[f];
             facet & first_facet_ = facets_[f];
             size_type neighbours_count = first_facet_.neighbours_.size();
             if (neighbours_count < dimension_) {
+                point_array const & first_ = ordered_[f];
                 for (size_type j = i + 1; j < newfacets_count; ++j) {
                     size_type const s = _newfacets[j];
-                    point_array const & second_ = ordered_[s];
-                    size_type r = 0;
-                    size_type l = 0;
-                    bool lgood = false;
-                    bool rgood = false;
-                    while ((l != dimension_) && (r != dimension_)) {
-                        size_type const left = first_[l];
-                        size_type const right = second_[r];
-                        if (left < right) {
-                            if (lgood) {
-                                lgood = false;
-                                break;
-                            } else {
-                                lgood = true;
-                            }
-                            ++l;
-                        } else {
-                            if (right < left) {
-                                if (rgood) {
+                    facet & second_facet_ = facets_[s];
+                    if (second_facet_.neighbours_.size() < dimension_) {
+                        point_array const & second_ = ordered_[s];
+                        size_type r = 0;
+                        size_type l = 0;
+                        bool lgood = false;
+                        bool rgood = false;
+                        while ((l != dimension_) && (r != dimension_)) {
+                            size_type const left = first_[l];
+                            size_type const right = second_[r];
+                            if (left < right) {
+                                if (lgood) {
                                     lgood = false;
                                     break;
                                 } else {
-                                    rgood = true;
+                                    lgood = true;
                                 }
-                            } else {
                                 ++l;
+                            } else {
+                                if (right < left) {
+                                    if (rgood) {
+                                        lgood = false;
+                                        break;
+                                    } else {
+                                        rgood = true;
+                                    }
+                                } else {
+                                    ++l;
+                                }
+                                ++r;
                             }
-                            ++r;
                         }
-                    }
-                    if (lgood != ((l != dimension_) && (++l == dimension_))) {
-                        if (rgood != ((r != dimension_) && (++r == dimension_))) {
-                            first_facet_.neighbours_.push_back(s);
-                            assert(facets_[s].neighbours_.size() < dimension_);
-                            facets_[s].neighbours_.push_back(f);
-                            if (!(++neighbours_count < dimension_)) {
-                                break;
+                        if (lgood != ((l != dimension_) && (++l == dimension_))) {
+                            if (rgood != ((r != dimension_) && (++r == dimension_))) {
+                                first_facet_.neighbours_.push_back(s);
+                                second_facet_.neighbours_.push_back(f);
+                                if (!(++neighbours_count < dimension_)) {
+                                    break;
+                                }
                             }
                         }
                     }

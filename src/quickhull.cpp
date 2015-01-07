@@ -57,7 +57,7 @@ main(int argc, char * argv[])
         std::cerr << "io: count line" << std::endl;
         return EXIT_FAILURE;
     }
-    using value_type = double;
+    using value_type = float;
     using point = std::deque< value_type >;
     using points = std::deque< point >;
     size_type count_ = 0;
