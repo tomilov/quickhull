@@ -100,7 +100,7 @@ main(int argc, char * argv[])
     std::cout << "#D = " << dimension_ << '\n';
     std::cout << "#N = " << count_ << '\n';
     using quick_hull_type = quick_hull< points >;
-    quick_hull_type quick_hull_(dimension_, points_);
+    quick_hull_type quick_hull_(dimension_);
     typename quick_hull_type::point_list initial_simplex_;
     {
         using std::chrono::duration_cast;
@@ -108,7 +108,7 @@ main(int argc, char * argv[])
         using std::chrono::steady_clock;
         {
             steady_clock::time_point const start = steady_clock::now();
-            initial_simplex_ = quick_hull_.create_simplex();
+            initial_simplex_ = quick_hull_.create_simplex(points_);
             size_type const basis_size_ = initial_simplex_.size();
             steady_clock::time_point const end = steady_clock::now();
             std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
@@ -153,8 +153,8 @@ main(int argc, char * argv[])
         os_ << ", '-' with lines notitle";
     }
     os_ << ";\n";
-    for (size_type const p : initial_simplex_) {
-        point const & point_ = points_[p];
+    for (auto const p : initial_simplex_) {
+        point const & point_ = *p;
         for (value_type const & coordinate_ : point_) {
             os_ << coordinate_ << ' ';
         }
@@ -179,13 +179,13 @@ main(int argc, char * argv[])
     os_ << "e\n";
     for (size_type i = 0; i < facets_count_; ++i) {
         auto const & vertices_ = facets_[i].vertices_;
-        for (size_type const vertex_ : vertices_) {
-            for (value_type const & coordinate_ : points_[vertex_]) {
+        for (auto const vertex_ : vertices_) {
+            for (value_type const & coordinate_ : *vertex_) {
                 os_ << coordinate_ << ' ';
             }
             os_ << '\n';
         }
-        point const & first_vertex_ = points_[vertices_.front()];
+        point const & first_vertex_ = *vertices_.front();
         for (value_type const & coordinate_ : first_vertex_) {
             os_ << coordinate_ << ' ';
         }

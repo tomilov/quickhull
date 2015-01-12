@@ -15,23 +15,24 @@
 #include <cmath>
 #include <cassert>
 
-template< typename points,
-          typename point = typename points::value_type,
-          typename value_type = typename point::value_type >
+template< typename points >
 struct quick_hull
 {
 
     using size_type = std::size_t;
 
+    using point_iterator = typename points::const_iterator;
+    static_assert(std::is_base_of< std::random_access_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >::value);
+
+    using point = typename points::value_type;
+    using value_type = typename point::value_type;
+
     size_type const dimension_;
-    points const & points_;
     value_type const eps;
 
     quick_hull(size_type const _dimension,
-               points const & _points,
                value_type const & _eps = std::numeric_limits< value_type >::epsilon())
         : dimension_(_dimension)
-        , points_(_points)
         , eps(_eps)
         , matrix_(_dimension)
         , shadow_matrix_(_dimension)
@@ -50,8 +51,8 @@ struct quick_hull
         shadow_matrix_.back().resize(dimension_);
     }
 
-    using point_array = std::vector< size_type >;
-    using point_list = std::list< size_type >;
+    using point_array = std::vector< point_iterator >;
+    using point_list = std::list< point_iterator >;
     using facet_array = std::vector< size_type >;
 
     struct facet // (d - 1)-dimensional face
@@ -237,7 +238,7 @@ private :
     set_hyperplane_equation(facet & _facet)
     {
         for (size_type r = 0; r < dimension_; ++r) {
-            std::copy_n(std::cbegin(points_[_facet.vertices_[r]]), dimension_, std::begin(shadow_matrix_[r]));
+            std::copy_n(std::cbegin(*_facet.vertices_[r]), dimension_, std::begin(shadow_matrix_[r]));
         }
         transpose();
         value_type N = zero;
@@ -292,11 +293,11 @@ private :
         size_type const rank_ = _vertices.size() - 1;
         assert(!(dimension_ < rank_));
         assert(!_vertices.empty());
-        std::copy_n(std::cbegin(points_[_vertices.back()]), dimension_, std::begin(origin_));
+        std::copy_n(std::cbegin(*_vertices.back()), dimension_, std::begin(origin_));
         auto vertex = std::cbegin(_vertices);
         for (size_type r = 0; r < rank_; ++r) { // affine space -> vector space
             row & row_ = matrix_[r];
-            std::copy_n(std::cbegin(points_[*vertex]), dimension_, std::begin(row_));
+            std::copy_n(std::cbegin(**vertex), dimension_, std::begin(row_));
             row_ -= origin_;
             ++vertex;
         }
@@ -316,7 +317,7 @@ private :
         auto vertex = std::begin(_affine_space);
         for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
             row & row_ = shadow_matrix_[r];
-            std::copy_n(std::cbegin(points_[*vertex]), dimension_, std::begin(row_));
+            std::copy_n(std::cbegin(**vertex), dimension_, std::begin(row_));
             row_ -= origin_;
             ++vertex;
         }
@@ -377,7 +378,7 @@ private :
     steal_best(point_list & _from, point_list & _to)
     {
         assert(!_to.empty());
-        std::copy_n(std::cbegin(points_[_to.back()]), dimension_, std::begin(origin_));
+        std::copy_n(std::cbegin(*_to.back()), dimension_, std::begin(origin_));
         size_type const rank_ = _to.size() - 1;
         orthogonalize(_to, rank_);
         row & projection_ = shadow_matrix_.back(); // projection to orghogonal subspace
@@ -388,7 +389,7 @@ private :
         auto const end = std::cend(_from);
         auto furthest = end;
         for (auto it = std::cbegin(_from); it != end; ++it) {
-            std::copy_n(std::cbegin(points_[*it]), dimension_, abeg);
+            std::copy_n(std::cbegin(**it), dimension_, abeg);
             apex_ -= origin_; // turn translated space into vector space
             projection_ = apex_;
             for (size_type i = 0; i < rank_; ++i) {
@@ -454,8 +455,7 @@ private :
         value_type distance_ = zero;
         while (it != end) {
             auto const next = std::next(it);
-            size_type const p = *it;
-            value_type d_ = _facet.distance(points_[p]);
+            value_type d_ = _facet.distance(**it);
             if (eps < d_) {
                 if ((distance_ < d_) || _facet.outside_.empty()) {
                     distance_ = std::move(d_);
@@ -489,8 +489,8 @@ private :
                         bool lgood = false;
                         bool rgood = false;
                         while ((l != dimension_) && (r != dimension_)) {
-                            size_type const left = first_[l];
-                            size_type const right = second_[r];
+                            point_iterator const left = first_[l];
+                            point_iterator const right = second_[r];
                             if (left < right) {
                                 if (lgood) {
                                     lgood = false;
@@ -594,19 +594,20 @@ private :
 public : // largest possible simplex heuristic, convex hull algorithm
 
     point_list
-    create_simplex()
+    create_simplex(points const & _points)
     {
         // selection of (dimension_ + 1) affinely independent points
         assert(1 < dimension_);
-        size_type const input_size = points_.size();
         point_list basis_;
-        if (!(0 < input_size)) {
+        if (_points.empty()) {
             return basis_;
         }
-        basis_.push_back(0);
+        auto it = std::cbegin(_points);
+        auto const end = std::cend(_points);
+        basis_.push_back(it);
         point_list internal_set_;
-        for (size_type i = 1; i < input_size; ++i) {
-            internal_set_.push_back(i);
+        while (++it != end) {
+            internal_set_.push_back(it);
         }
         if (!steal_best(internal_set_, basis_)) {
             return basis_; // can't find affine independent second point
@@ -664,9 +665,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
         for (size_type best_facet = get_best_facet(); best_facet != facets_.size(); best_facet = get_best_facet()) {
             point_list & best_facet_outsides_ = facets_[best_facet].outside_;
             assert(!best_facet_outsides_.empty());
-            size_type const apex = best_facet_outsides_.front();
+            point_iterator const apex = best_facet_outsides_.front();
             best_facet_outsides_.pop_front();
-            process_visibles(best_facet, points_[apex]);
+            process_visibles(best_facet, *apex);
             assert(outside_.empty());
             for (size_type const not_bth_facet : not_bth_facets_) {
                 facet & facet_ = facets_[not_bth_facet];
@@ -688,7 +689,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         {
                             assert(ridge_.empty());
                             ridge_.reserve(dimension_);
-                            for (size_type const vertex : vertices_) { // facets intersection with keeping of points order as it is in visible facet
+                            for (point_iterator const vertex : vertices_) { // facets intersection with keeping of points order as it is in visible facet
                                 if (std::binary_search(std::cbegin(horizon_), std::cend(horizon_), vertex)) {
                                     ridge_.push_back(vertex);
                                 } else {
