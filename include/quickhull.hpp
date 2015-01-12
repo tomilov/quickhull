@@ -231,8 +231,41 @@ private :
 
     // geometry and basic operations on geometric primitives:
 
+    struct unique_ridge
+    {
+
+        point_array const & ordered_;
+        size_type const excluded_vertex_;
+        size_type const facet_;
+
+        bool
+        operator < (unique_ridge const & _other_ridge) const
+        {
+            size_type const dimension_ = ordered_.size();
+            size_type i = 0;
+            size_type j = 0;
+            do {
+                if (i == excluded_vertex_) {
+                    ++i;
+                } else if (j == _other_ridge.excluded_vertex_) {
+                    ++j;
+                }
+                assert(i < dimension_);
+                assert(j < dimension_);
+                if (ordered_[i] < ordered_[j]) {
+                    return true;
+                } else if (ordered_[i] < ordered_[j]) {
+                    return false;
+                }
+            } while ((++i < dimension_) && (++j < dimension_));
+            assert(i == j);
+            return false;
+        }
+
+    };
+
     std::vector< point_array > ordered_; // ordered, but not oriented vertices of facets
-    std::set< size_type, std::greater< size_type > > removed_facets_;
+    std::set< unique_ridge > unique_ridges_;
 
     void
     set_hyperplane_equation(facet & _facet)
@@ -255,6 +288,8 @@ private :
         _facet.D = -det() / std::move(N);
     }
 
+    std::set< size_type, std::greater< size_type > > removed_facets_;
+
     size_type
     add_facet(point_array && _vertices, size_type const _neighbour)
     {
@@ -264,9 +299,9 @@ private :
             facets_.emplace_back(std::move(_vertices), _neighbour);
             facet & facet_ = facets_.back();
             set_hyperplane_equation(facet_);
-            ordered_.emplace_back(std::cbegin(facet_.vertices_),
-                                  std::cend(facet_.vertices_));
+            ordered_.emplace_back();
             point_array & ordered_vertices_ = ordered_.back();
+            ordered_vertices_ = facet_.vertices_;
             std::sort(std::begin(ordered_vertices_), std::end(ordered_vertices_));
             return f;
         } else {
@@ -277,9 +312,7 @@ private :
             facet_.init(std::move(_vertices), _neighbour);
             set_hyperplane_equation(facet_);
             point_array & ordered_vertices_ = ordered_[f];
-            assert(ordered_vertices_.empty());
-            ordered_vertices_.assign(std::cbegin(facet_.vertices_),
-                                     std::cend(facet_.vertices_));
+            ordered_vertices_ = facet_.vertices_;
             std::sort(std::begin(ordered_vertices_), std::end(ordered_vertices_));
             return f;
         }
@@ -434,7 +467,6 @@ private :
             ranking_meta_.erase(r);
         }
         removed_facets_.insert(_facet);
-        ordered_[_facet].clear();
     }
 
     size_type
@@ -633,8 +665,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
                           facet_.vertices_.back());
             }
             set_hyperplane_equation(facet_);
-            ordered_.emplace_back(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
+            ordered_.emplace_back();
             point_array & ordered_vertices_ = ordered_.back();
+            ordered_vertices_ = facet_.vertices_;
             std::sort(std::begin(ordered_vertices_), std::end(ordered_vertices_));
             rank(partition(facet_, internal_set_), newfacet);
         }
