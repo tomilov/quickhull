@@ -2,6 +2,7 @@
 
 #include <valarray>
 #include <vector>
+#include <deque>
 #include <list>
 #include <set>
 #include <unordered_set>
@@ -104,7 +105,7 @@ struct quick_hull
 
     };
 
-    using facets_storage = std::vector< facet >;
+    using facets_storage = std::deque< facet >;
 
     facets_storage facets_;
 
@@ -231,41 +232,64 @@ private :
 
     // geometry and basic operations on geometric primitives:
 
-    struct unique_ridge
+    struct ridge
     {
 
         point_array const & ordered_;
-        size_type const excluded_vertex_;
         size_type const facet_;
+        size_type const excluded_vertex_;
 
         bool
-        operator < (unique_ridge const & _other_ridge) const
+        operator < (ridge const & _other_ridge) const
         {
             size_type const dimension_ = ordered_.size();
             size_type i = 0;
             size_type j = 0;
-            do {
+            for (;;) {
                 if (i == excluded_vertex_) {
                     ++i;
-                } else if (j == _other_ridge.excluded_vertex_) {
+                }
+                if (j == _other_ridge.excluded_vertex_) {
                     ++j;
                 }
-                assert(i < dimension_);
-                assert(j < dimension_);
-                if (ordered_[i] < ordered_[j]) {
-                    return true;
-                } else if (ordered_[i] < ordered_[j]) {
-                    return false;
+                if (i == dimension_) {
+                    assert(j == dimension_);
+                    break;
                 }
-            } while ((++i < dimension_) && (++j < dimension_));
-            assert(i == j);
+                if (j == dimension_) {
+                    assert(i == dimension_);
+                    break;
+                }
+                if (ordered_[i] < _other_ridge.ordered_[j]) {
+                    return true;
+                } else if (_other_ridge.ordered_[j] < ordered_[i]) {
+                    return false;
+                } else {
+                    ++i;
+                    ++j;
+                }
+            }
             return false;
         }
 
     };
 
-    std::vector< point_array > ordered_; // ordered, but not oriented vertices of facets
-    std::set< unique_ridge > unique_ridges_;
+    std::deque< point_array > ordered_; // ordered, but not oriented vertices of facets
+    std::set< ridge > unique_ridges_;
+
+    void
+    find_adjacent_facets(size_type const _facet)
+    {
+        for (size_type i = 0; i < dimension_; ++i) {
+            auto position = unique_ridges_.insert(ridge{ordered_[_facet], _facet, i});
+            if (!position.second) {
+                size_type const neighbour = position.first->facet_;
+                facets_[neighbour].neighbours_.push_back(_facet);
+                facets_[_facet].neighbours_.push_back(neighbour);
+                unique_ridges_.erase(position.first);
+            }
+        }
+    }
 
     void
     set_hyperplane_equation(facet & _facet)
@@ -501,65 +525,6 @@ private :
         return distance_;
     }
 
-    void
-    adjacency(facet_array const & _newfacets)
-    {
-        size_type const newfacets_count = _newfacets.size();
-        for (size_type i = 0; i < newfacets_count; ++i) {
-            size_type const f = _newfacets[i];
-            facet & first_facet_ = facets_[f];
-            size_type neighbours_count = first_facet_.neighbours_.size();
-            if (neighbours_count < dimension_) {
-                point_array const & first_ = ordered_[f];
-                for (size_type j = i + 1; j < newfacets_count; ++j) {
-                    size_type const s = _newfacets[j];
-                    facet & second_facet_ = facets_[s];
-                    if (second_facet_.neighbours_.size() < dimension_) {
-                        point_array const & second_ = ordered_[s];
-                        size_type r = 0;
-                        size_type l = 0;
-                        bool lgood = false;
-                        bool rgood = false;
-                        while ((l != dimension_) && (r != dimension_)) {
-                            point_iterator const left = first_[l];
-                            point_iterator const right = second_[r];
-                            if (left < right) {
-                                if (lgood) {
-                                    lgood = false;
-                                    break;
-                                } else {
-                                    lgood = true;
-                                }
-                                ++l;
-                            } else {
-                                if (right < left) {
-                                    if (rgood) {
-                                        lgood = false;
-                                        break;
-                                    } else {
-                                        rgood = true;
-                                    }
-                                } else {
-                                    ++l;
-                                }
-                                ++r;
-                            }
-                        }
-                        if (lgood != ((l != dimension_) && (++l == dimension_))) {
-                            if (rgood != ((r != dimension_) && (++r == dimension_))) {
-                                first_facet_.neighbours_.push_back(s);
-                                second_facet_.neighbours_.push_back(f);
-                                if (!(++neighbours_count < dimension_)) {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     using facet_unordered_set = std::unordered_set< size_type >;
 
     facet_unordered_set visited_;
@@ -734,11 +699,12 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         size_type const newfacet = add_facet(std::move(ridge_), neighbour);
                         newfacets_.push_back(newfacet);
                         replace_neighbour(neighbour, bth_facet, newfacet);
+                        find_adjacent_facets(newfacet);
                     }
                 }
             }
             clear_bth();
-            adjacency(newfacets_);
+            unique_ridges_.clear();
             for (size_type const newfacet : newfacets_) {
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
