@@ -190,6 +190,6 @@ main(int argc, char * argv[])
         }
         os_ << "\ne\n";
     }
-    os_ << std::endl;
+    os_ << std::flush;
     return EXIT_SUCCESS;
 }

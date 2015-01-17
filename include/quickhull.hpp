@@ -13,6 +13,11 @@
 #include <utility>
 #include <numeric>
 
+#ifdef _DEBUG
+#include <ostream>
+#include <iostream>
+#endif
+
 #include <cmath>
 #include <cassert>
 
@@ -591,6 +596,76 @@ private :
         }
     }
 
+#ifdef _DEBUG
+    std::ostream &
+    pause(std::ostream & _out, std::string const & _message) const
+    {
+        _out << "print \"" << _message << "\"\n";
+        return _out << "pause mouse 'next facet'\n";
+    }
+
+    std::ostream &
+    print_hull(std::ostream & _out) const
+    {
+        _out << "clear\n";
+        std::string info_;
+        if (!facets_.empty()) {
+            _out << "set autoscale\n";
+            _out << "set view equal xyz\n";
+            size_type const facets_count_ = facets_.size() - removed_facets_.size();
+            info_ = std::to_string(facets_count_) + " facets\\n";
+            switch (dimension_) {
+            case 2 : {
+                _out << "plot";
+                break;
+            }
+            case 3 : {
+                _out << "splot";
+                break;
+            }
+            default : {
+                assert(false);
+            }
+            }
+            {
+                _out << " '-' with lines notitle";
+                for (size_type i = 1; i < facets_count_; ++i) {
+                    _out << ", '-' with lines notitle";
+                }
+                _out << ";\n";
+            }
+            for (size_type i = 0; i < facets_count_; ++i) {
+                if (removed_facets_.count(i) == 0) {
+                    auto const & vertices_ = facets_[i].vertices_;
+                    info_ += "facet " + std::to_string(i) + " points:\\n";
+                    for (auto const vertex_ : vertices_) {
+                        for (value_type const & coordinate_ : *vertex_) {
+                            _out << coordinate_ << ' ';
+                            info_ += std::to_string(coordinate_) + ' ';
+                        }
+                        _out << '\n';
+                        info_ += "\\n";
+                    }
+                    point const & first_vertex_ = *vertices_.front();
+                    for (value_type const & coordinate_ : first_vertex_) {
+                        _out << coordinate_ << ' ';
+                        info_ += std::to_string(coordinate_) + ' ';
+                    }
+                    _out << '\n';
+                    info_ += "\\n";
+                    _out << "e\n";
+                } else {
+                    info_ += "facet " + std::to_string(i) + " have no outside points\\n";
+                }
+                info_ += "\\n";
+            }
+        } else {
+            info_ = "there is no facets at all";
+        }
+        return pause(_out, info_);
+    }
+#endif
+
 public : // largest possible simplex heuristic, convex hull algorithm
 
     point_list
@@ -663,6 +738,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
         facet_array neighbours_;
         point_array ridge_; // horizon ridge + furthest point = new facet
         facet_array newfacets_;
+#ifdef _DEBUG
+        print_hull(std::cout);
+#endif
         for (size_type best_facet = get_best_facet(); best_facet != facets_.size(); best_facet = get_best_facet()) {
             point_list & best_facet_outsides_ = facets_[best_facet].outside_;
             assert(!best_facet_outsides_.empty());
@@ -713,6 +791,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
             newfacets_.clear();
             outside_.clear();
+#ifdef _DEBUG
+            print_hull(std::cout);
+#endif
         }
         assert(outside_.empty());
         assert(ranking_.empty());
