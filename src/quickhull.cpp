@@ -133,7 +133,6 @@ main(int argc, char * argv[])
     os_ << "set autoscale\n";
     os_ << "set view equal xyz\n";
     switch (dimension_) {
-    case 1 :
     case 2 : {
         os_ << "plot";
         break;
