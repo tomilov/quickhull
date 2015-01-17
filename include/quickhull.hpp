@@ -232,7 +232,7 @@ private :
 
     // geometry and basic operations on geometric primitives:
 
-    struct ridge
+    struct ridgelike
     {
 
         point_array const & ordered_;
@@ -240,7 +240,7 @@ private :
         size_type const excluded_vertex_;
 
         bool
-        operator < (ridge const & _other_ridge) const
+        operator < (ridgelike const & _other_ridge) const
         {
             size_type const dimension_ = ordered_.size();
             size_type i = 0;
@@ -275,18 +275,21 @@ private :
     };
 
     std::deque< point_array > ordered_; // ordered, but not oriented vertices of facets
-    std::set< ridge > unique_ridges_;
+    std::set< ridgelike > unique_ridges_;
 
     void
-    find_adjacent_facets(size_type const _facet)
+    find_adjacent_facets(size_type const _facet, point_iterator const _apex)
     {
         for (size_type i = 0; i < dimension_; ++i) {
-            auto position = unique_ridges_.insert(ridge{ordered_[_facet], _facet, i});
-            if (!position.second) {
-                size_type const neighbour = position.first->facet_;
-                facets_[neighbour].neighbours_.push_back(_facet);
-                facets_[_facet].neighbours_.push_back(neighbour);
-                unique_ridges_.erase(position.first);
+            point_array const & ridgelike_ = ordered_[_facet];
+            if (ridgelike_[i] != _apex) {
+                auto position = unique_ridges_.insert({ridgelike_, _facet, i});
+                if (!position.second) {
+                    size_type const neighbour = position.first->facet_;
+                    facets_[neighbour].neighbours_.push_back(_facet);
+                    facets_[_facet].neighbours_.push_back(neighbour);
+                    unique_ridges_.erase(position.first);
+                }
             }
         }
     }
@@ -699,12 +702,12 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         size_type const newfacet = add_facet(std::move(ridge_), neighbour);
                         newfacets_.push_back(newfacet);
                         replace_neighbour(neighbour, bth_facet, newfacet);
-                        find_adjacent_facets(newfacet);
+                        find_adjacent_facets(newfacet, apex);
                     }
                 }
             }
+            assert(unique_ridges_.empty());
             clear_bth();
-            unique_ridges_.clear();
             for (size_type const newfacet : newfacets_) {
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
