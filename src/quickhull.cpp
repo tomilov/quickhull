@@ -58,8 +58,8 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     using value_type = float;
-    using point = std::deque< value_type >;
-    using points = std::deque< point >;
+    using point = std::valarray< value_type >;
+    using points = std::vector< point >;
     size_type count_ = 0;
     {
         iss_.str(line_);
@@ -99,7 +99,7 @@ main(int argc, char * argv[])
     //std::cout.rdbuf()->pubsetbuf(nullptr, 0);
     std::cout << "#D = " << dimension_ << '\n';
     std::cout << "#N = " << count_ << '\n';
-    using quick_hull_type = quick_hull< points >;
+    using quick_hull_type = quick_hull< typename points::const_iterator >;
     quick_hull_type quick_hull_(dimension_);
     typename quick_hull_type::point_list initial_simplex_;
     {
@@ -108,7 +108,7 @@ main(int argc, char * argv[])
         using std::chrono::steady_clock;
         {
             steady_clock::time_point const start = steady_clock::now();
-            initial_simplex_ = quick_hull_.create_simplex(points_);
+            initial_simplex_ = quick_hull_.create_simplex(std::cbegin(points_), std::cend(points_));
             size_type const basis_size_ = initial_simplex_.size();
             steady_clock::time_point const end = steady_clock::now();
             std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";

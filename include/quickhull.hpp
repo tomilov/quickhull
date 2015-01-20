@@ -21,16 +21,15 @@
 #include <cmath>
 #include <cassert>
 
-template< typename points >
+template< typename point_iterator >
 struct quick_hull
 {
 
     using size_type = std::size_t;
 
-    using point_iterator = typename points::const_iterator;
     static_assert(std::is_base_of< std::random_access_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >::value);
 
-    using point = typename points::value_type;
+    using point = typename std::iterator_traits< point_iterator >::value_type;
     using value_type = typename point::value_type;
 
     size_type const dimension_;
@@ -45,6 +44,7 @@ struct quick_hull
         , minor_()
         , origin_(zero, _dimension)
     {
+        assert(1 < dimension_);
         assert(!(_eps < zero));
         size_type const minor_size = dimension_ - 1;
         minor_.resize(minor_size);
@@ -597,92 +597,136 @@ private :
     }
 
 #ifdef _DEBUG
+    //rbox n D3 64 M3,4 z | tee /tmp/quickhull.txt | bin/quickhull > /tmp/quickhull.plt && gnuplot -p -e "load '/tmp/quickhull.plt'"
     std::ostream &
-    pause(std::ostream & _out, std::string const & _message) const
-    {
-        _out << "print \"" << _message << "\"\n";
-        return _out << "pause mouse 'next facet'\n";
-    }
-
-    std::ostream &
-    print_hull(std::ostream & _out) const
+    print_hull(std::ostream & _out, facet_array const & _newfacets = {}) const
     {
         _out << "clear\n";
-        std::string info_;
         if (!facets_.empty()) {
-            _out << "set autoscale\n";
-            _out << "set view equal xyz\n";
-            size_type const facets_count_ = facets_.size() - removed_facets_.size();
-            info_ = std::to_string(facets_count_) + " facets\\n";
+            std::string plot_;
             switch (dimension_) {
             case 2 : {
-                _out << "plot";
+                plot_ = "plot";
                 break;
             }
             case 3 : {
-                _out << "splot";
+                plot_ = "splot";
                 break;
             }
             default : {
                 assert(false);
             }
             }
+            _out << "set autoscale\n";
+            _out << "set view equal xyz\n";
             {
-                _out << " '-' with lines notitle";
-                for (size_type i = 1; i < facets_count_; ++i) {
-                    _out << ", '-' with lines notitle";
+                {
+                    _out << plot_
+                         << " '-' notitle with labels point offset character 0, character 0.5 font 'Times,6';\n";
+                    {
+                        for (auto pt = beg_; pt != end_; ++pt) {
+                            std::copy(std::cbegin(*pt), std::cend(*pt), std::ostream_iterator< value_type >(_out, " "));
+                            _out << std::distance(beg_, pt) << '\n';
+                        }
+                        _out << "e\n";
+                    }
+                }
+            }
+            size_type const facets_count_ = facets_.size();
+            size_type const newfacets_count_ = _newfacets.size();
+            auto const rend = std::cend(removed_facets_);
+            {
+                _out << plot_;
+                bool first_ = true;
+                for (size_type i = 0; i < facets_count_; ++i) {
+                    if (removed_facets_.find(i) == rend) {
+                        if (first_) {
+                            first_ = false;
+                        } else {
+                            _out << ",";
+                        }
+                        _out << " '-' notitle with lines";
+                        _out << ", '-' notitle with vectors head linecolor rgb 'green'";
+                    }
+                }
+                for (size_type i = 0; i < newfacets_count_; ++i) {
+                    _out << ", '-' notitle with vectors head linecolor rgb 'red'";
                 }
                 _out << ";\n";
             }
             for (size_type i = 0; i < facets_count_; ++i) {
-                if (removed_facets_.count(i) == 0) {
-                    auto const & vertices_ = facets_[i].vertices_;
-                    info_ += "facet " + std::to_string(i) + " points:\\n";
-                    for (auto const vertex_ : vertices_) {
-                        for (value_type const & coordinate_ : *vertex_) {
-                            _out << coordinate_ << ' ';
-                            info_ += std::to_string(coordinate_) + ' ';
+                if (removed_facets_.find(i) == rend) {
+                    auto const & facet_ = facets_[i];
+                    auto const & vertices_ = facet_.vertices_;
+                    auto const & normal_ = facet_.normal_;
+                    {
+                        point center_(zero, dimension_);
+                        {
+                            for (auto const vertex_ : vertices_) {
+                                center_ += *vertex_;
+                                std::copy(std::cbegin(*vertex_), std::cend(*vertex_), std::ostream_iterator< value_type >(_out, " "));
+                                _out << '\n';
+                            }
+                            point const & first_vertex_ = *vertices_.front();
+                            std::copy(std::cbegin(first_vertex_), std::cend(first_vertex_), std::ostream_iterator< value_type >(_out, " "));
+                            _out << '\n';
+                            _out << "e\n";
                         }
-                        _out << '\n';
-                        info_ += "\\n";
+                        center_ *= one / value_type(dimension_);
+                        {
+                            std::copy(std::cbegin(center_), std::cend(center_), std::ostream_iterator< value_type >(_out, " "));
+                            std::copy(std::cbegin(normal_), std::cend(normal_), std::ostream_iterator< value_type >(_out, " "));
+                            _out << '\n';
+                            _out << "e\n";
+                        }
                     }
-                    point const & first_vertex_ = *vertices_.front();
-                    for (value_type const & coordinate_ : first_vertex_) {
-                        _out << coordinate_ << ' ';
-                        info_ += std::to_string(coordinate_) + ' ';
-                    }
-                    _out << '\n';
-                    info_ += "\\n";
-                    _out << "e\n";
-                } else {
-                    info_ += "facet " + std::to_string(i) + " have no outside points\\n";
                 }
-                info_ += "\\n";
             }
-        } else {
-            info_ = "there is no facets at all";
+            for (size_type const f : _newfacets) {
+                auto const & facet_ = facets_[f];
+                auto const & vertices_ = facet_.vertices_;
+                auto const & outside_ = facet_.outside_;
+                point center_(zero, dimension_);
+                for (auto const vertex_ : vertices_) {
+                    center_ += *vertex_;
+                }
+                center_ *= one / value_type(dimension_);
+                for (auto const o : outside_) {
+                    std::copy(std::cbegin(center_), std::cend(center_), std::ostream_iterator< value_type >(_out, " "));
+                    point const opoint_ = *o - center_;
+                    std::copy(std::cbegin(opoint_), std::cend(opoint_), std::ostream_iterator< value_type >(_out, " "));
+                    _out << '\n';
+                }
+                _out << "e\n";
+            }
         }
-        return pause(_out, info_);
+        _out << "print 'next iteration';\n";
+        return _out << "pause mouse '';\n";
     }
 #endif
 
 public : // largest possible simplex heuristic, convex hull algorithm
 
+#ifdef _DEBUG
+    point_iterator beg_;
+    point_iterator end_;
+#endif
+
     point_list
-    create_simplex(points const & _points)
+    create_simplex(point_iterator beg, point_iterator end)
     {
         // selection of (dimension_ + 1) affinely independent points
-        assert(1 < dimension_);
         point_list basis_;
-        if (_points.empty()) {
+        if (beg == end) {
             return basis_;
         }
-        auto it = std::cbegin(_points);
-        auto const end = std::cend(_points);
-        basis_.push_back(it);
+        basis_.push_back(beg);
         point_list internal_set_;
-        while (++it != end) {
-            internal_set_.push_back(it);
+        {
+            auto it = beg;
+            while (++it != end) {
+                internal_set_.push_back(it);
+            }
         }
         if (!steal_best(internal_set_, basis_)) {
             return basis_; // can't find affine independent second point
@@ -724,6 +768,10 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 }
             }
         }
+#ifdef _DEBUG
+        beg_ = beg;
+        end_ = end;
+#endif
         return basis_;
     }
 
@@ -785,15 +833,15 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 }
             }
             assert(unique_ridges_.empty());
-            clear_bth();
             for (size_type const newfacet : newfacets_) {
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
+#ifdef _DEBUG
+            print_hull(std::cout, newfacets_);
+#endif
             newfacets_.clear();
             outside_.clear();
-#ifdef _DEBUG
-            print_hull(std::cout);
-#endif
+            clear_bth();
         }
         assert(outside_.empty());
         assert(ranking_.empty());
