@@ -1,13 +1,15 @@
 #include "quickhull.hpp"
 
 #include <iostream>
+#include <ostream>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <chrono>
-#include <deque>
 #include <set>
 #include <numeric>
+#include <valarray>
+#include <vector>
 
 #include <cmath>
 #include <cstdlib>

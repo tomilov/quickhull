@@ -13,11 +13,6 @@
 #include <utility>
 #include <numeric>
 
-#ifdef _DEBUG
-#include <ostream>
-#include <iostream>
-#endif
-
 #include <cmath>
 #include <cassert>
 
@@ -594,121 +589,7 @@ private :
         }
     }
 
-#ifdef _DEBUG
-    //rbox n D3 64 M3,4 z | tee /tmp/quickhull.txt | bin/quickhull > /tmp/quickhull.plt && gnuplot -p -e "load '/tmp/quickhull.plt'"
-    std::ostream &
-    print_hull(std::ostream & _out, facet_array const & _newfacets = {}) const
-    {
-        _out << "clear\n";
-        if (!facets_.empty()) {
-            std::string plot_;
-            switch (dimension_) {
-            case 2 : {
-                plot_ = "plot";
-                break;
-            }
-            case 3 : {
-                plot_ = "splot";
-                break;
-            }
-            default : {
-                assert(false);
-            }
-            }
-            _out << "set autoscale\n";
-            _out << "set view equal xyz\n";
-            {
-                {
-                    _out << plot_
-                         << " '-' notitle with labels point offset character 0, character 0.5 font 'Times,6';\n";
-                    {
-                        for (auto pt = beg_; pt != end_; ++pt) {
-                            std::copy(std::cbegin(*pt), std::cend(*pt), std::ostream_iterator< value_type >(_out, " "));
-                            _out << std::distance(beg_, pt) << '\n';
-                        }
-                        _out << "e\n";
-                    }
-                }
-            }
-            size_type const facets_count_ = facets_.size();
-            size_type const newfacets_count_ = _newfacets.size();
-            auto const rend = std::cend(removed_facets_);
-            {
-                _out << plot_;
-                bool first_ = true;
-                for (size_type i = 0; i < facets_count_; ++i) {
-                    if (removed_facets_.find(i) == rend) {
-                        if (first_) {
-                            first_ = false;
-                        } else {
-                            _out << ",";
-                        }
-                        _out << " '-' notitle with lines";
-                        _out << ", '-' notitle with vectors head linecolor rgb 'green'";
-                    }
-                }
-                for (size_type i = 0; i < newfacets_count_; ++i) {
-                    _out << ", '-' notitle with vectors head linecolor rgb 'red'";
-                }
-                _out << ";\n";
-            }
-            for (size_type i = 0; i < facets_count_; ++i) {
-                if (removed_facets_.find(i) == rend) {
-                    auto const & facet_ = facets_[i];
-                    auto const & vertices_ = facet_.vertices_;
-                    auto const & normal_ = facet_.normal_;
-                    {
-                        point center_(zero, dimension_);
-                        {
-                            for (auto const vertex_ : vertices_) {
-                                center_ += *vertex_;
-                                std::copy(std::cbegin(*vertex_), std::cend(*vertex_), std::ostream_iterator< value_type >(_out, " "));
-                                _out << '\n';
-                            }
-                            point const & first_vertex_ = *vertices_.front();
-                            std::copy(std::cbegin(first_vertex_), std::cend(first_vertex_), std::ostream_iterator< value_type >(_out, " "));
-                            _out << '\n';
-                            _out << "e\n";
-                        }
-                        center_ *= one / value_type(dimension_);
-                        {
-                            std::copy(std::cbegin(center_), std::cend(center_), std::ostream_iterator< value_type >(_out, " "));
-                            std::copy(std::cbegin(normal_), std::cend(normal_), std::ostream_iterator< value_type >(_out, " "));
-                            _out << '\n';
-                            _out << "e\n";
-                        }
-                    }
-                }
-            }
-            for (size_type const f : _newfacets) {
-                auto const & facet_ = facets_[f];
-                auto const & vertices_ = facet_.vertices_;
-                auto const & outside_ = facet_.outside_;
-                point center_(zero, dimension_);
-                for (auto const vertex_ : vertices_) {
-                    center_ += *vertex_;
-                }
-                center_ *= one / value_type(dimension_);
-                for (auto const o : outside_) {
-                    std::copy(std::cbegin(center_), std::cend(center_), std::ostream_iterator< value_type >(_out, " "));
-                    point const opoint_ = *o - center_;
-                    std::copy(std::cbegin(opoint_), std::cend(opoint_), std::ostream_iterator< value_type >(_out, " "));
-                    _out << '\n';
-                }
-                _out << "e\n";
-            }
-        }
-        _out << "print 'next iteration';\n";
-        return _out << "pause mouse '';\n";
-    }
-#endif
-
 public : // largest possible simplex heuristic, convex hull algorithm
-
-#ifdef _DEBUG
-    point_iterator beg_;
-    point_iterator end_;
-#endif
 
     point_list
     create_simplex(point_iterator beg, point_iterator end)
@@ -766,16 +647,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 }
             }
         }
-#ifdef _DEBUG
-        beg_ = beg;
-        end_ = end;
-        facet_array newfacets_;
-        newfacets_.reserve(dimension_ + 1);
-        for (size_type i = 0; i <= dimension_; ++i) {
-            newfacets_.push_back(i);
-        }
-        print_hull(std::cout, newfacets_);
-#endif
         return basis_;
     }
 
@@ -837,9 +708,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
             for (size_type const newfacet : newfacets_) {
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
-#ifdef _DEBUG
-            print_hull(std::cout, newfacets_);
-#endif
             newfacets_.clear();
             outside_.clear();
             clear_bth();
