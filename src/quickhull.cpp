@@ -7,7 +7,9 @@
 #include <chrono>
 #include <deque>
 #include <set>
+#include <numeric>
 
+#include <cmath>
 #include <cstdlib>
 #include <cstdio>
 #include <cassert>
@@ -57,7 +59,7 @@ main(int argc, char * argv[])
         std::cerr << "io: count line" << std::endl;
         return EXIT_FAILURE;
     }
-    using value_type = float;
+    using value_type = double;
     using point = std::valarray< value_type >;
     using points = std::vector< point >;
     size_type count_ = 0;
@@ -100,7 +102,8 @@ main(int argc, char * argv[])
     std::cout << "#D = " << dimension_ << '\n';
     std::cout << "#N = " << count_ << '\n';
     using quick_hull_type = quick_hull< typename points::const_iterator >;
-    quick_hull_type quick_hull_(dimension_);
+    using std::sqrt;
+    quick_hull_type quick_hull_(dimension_, sqrt(std::numeric_limits< value_type >::epsilon()));
     typename quick_hull_type::point_list initial_simplex_;
     {
         using std::chrono::duration_cast;

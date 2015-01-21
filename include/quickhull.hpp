@@ -36,16 +36,16 @@ struct quick_hull
     value_type const eps;
 
     quick_hull(size_type const _dimension,
-               value_type const & _eps = std::numeric_limits< value_type >::epsilon())
+               value_type _eps = std::numeric_limits< value_type >::epsilon())
         : dimension_(_dimension)
-        , eps(_eps)
+        , eps(std::move(_eps))
         , matrix_(_dimension)
         , shadow_matrix_(_dimension)
         , minor_()
         , origin_(zero, _dimension)
     {
         assert(1 < dimension_);
-        assert(!(_eps < zero));
+        assert(!(eps < zero));
         size_type const minor_size = dimension_ - 1;
         minor_.resize(minor_size);
         for (size_type r = 0; r < minor_size; ++r) {
@@ -516,17 +516,15 @@ private :
     {
         auto it = std::cbegin(_points);
         auto const end = std::cend(_points);
-        value_type distance_ = zero;
+        value_type distance_ = eps;
         while (it != end) {
             auto const next = std::next(it);
             value_type d_ = _facet.distance(**it);
-            if (eps < d_) {
-                if ((distance_ < d_) || _facet.outside_.empty()) {
-                    distance_ = std::move(d_);
-                    _facet.outside_.splice(std::cbegin(_facet.outside_), _points, it);
-                } else {
-                    _facet.outside_.splice(std::cend(_facet.outside_), _points, it);
-                }
+            if (distance_ < d_) {
+                distance_ = std::move(d_);
+                _facet.outside_.splice(std::cbegin(_facet.outside_), _points, it);
+            } else if (eps < d_) {
+                _facet.outside_.splice(std::cend(_facet.outside_), _points, it);
             }
             it = next;
         }
@@ -771,6 +769,12 @@ public : // largest possible simplex heuristic, convex hull algorithm
 #ifdef _DEBUG
         beg_ = beg;
         end_ = end;
+        facet_array newfacets_;
+        newfacets_.reserve(dimension_ + 1);
+        for (size_type i = 0; i <= dimension_; ++i) {
+            newfacets_.push_back(i);
+        }
+        print_hull(std::cout, newfacets_);
 #endif
         return basis_;
     }
@@ -786,9 +790,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
         facet_array neighbours_;
         point_array ridge_; // horizon ridge + furthest point = new facet
         facet_array newfacets_;
-#ifdef _DEBUG
-        print_hull(std::cout);
-#endif
         for (size_type best_facet = get_best_facet(); best_facet != facets_.size(); best_facet = get_best_facet()) {
             point_list & best_facet_outsides_ = facets_[best_facet].outside_;
             assert(!best_facet_outsides_.empty());
