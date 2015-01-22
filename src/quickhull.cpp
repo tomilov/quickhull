@@ -106,7 +106,7 @@ main(int argc, char * argv[])
     using quick_hull_type = quick_hull< typename points::const_iterator >;
     using std::sqrt;
     quick_hull_type quick_hull_(dimension_, sqrt(std::numeric_limits< value_type >::epsilon()));
-    typename quick_hull_type::point_list initial_simplex_;
+    typename quick_hull_type::point_array initial_simplex_;
     {
         using std::chrono::duration_cast;
         using std::chrono::microseconds;
