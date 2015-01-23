@@ -74,7 +74,10 @@ struct quick_hull
              size_type const _neighbour)
         {
             vertices_ = std::move(_vertices);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
             size_type const dimension_ = vertices_.size();
+#pragma clang diagnostic pop
             neighbours_.reserve(dimension_);
             neighbours_.push_back(_neighbour);
             normal_.resize(dimension_);
@@ -92,7 +95,10 @@ struct quick_hull
             : vertices_(_first, std::prev(_middle))
         {
             vertices_.insert(std::cend(vertices_), _middle, _last);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
             size_type const dimension_ = vertices_.size();
+#pragma clang diagnostic pop
             neighbours_.reserve(dimension_);
             normal_.resize(dimension_);
         }
@@ -167,10 +173,8 @@ private :
         for (size_type r = 0; r < _size; ++r) {
             row & lhs_ = shadow_matrix_[r];
             row const & row_ = matrix_[r];
-            auto const rbeg = std::cbegin(row_);
-            auto const rend = std::cend(row_);
             for (size_type c = 0; c < _size; ++c) {
-                lhs_[c] = std::inner_product(rbeg, rend, std::cbegin(matrix_[c]), zero);
+                lhs_[c] = std::inner_product(std::cbegin(row_), std::cend(row_), std::cbegin(matrix_[c]), zero);
             }
         }
     }
@@ -341,18 +345,15 @@ private :
         forward_transformation(rank_);
         row & projection_ = minor_.back();
         row & apex_ = minor_.front();
-        auto const abeg = std::begin(apex_);
-        auto const aend = std::end(apex_);
         value_type distance_ = zero;
-        auto const end = std::cend(_from);
-        auto furthest = end;
-        for (auto it = std::cbegin(_from); it != end; ++it) {
-            std::copy_n(std::cbegin(**it), dimension_, abeg);
+        auto furthest = std::cend(_from);
+        for (auto it = std::cbegin(_from); it != std::cend(_from); ++it) {
+            std::copy_n(std::cbegin(**it), dimension_, std::begin(apex_));
             apex_ -= origin_; // turn translated space into vector space
             projection_ = apex_; // project onto orthogonal subspace
             for (size_type i = 0; i < rank_; ++i) {
                 row const & qi_ = matrix_[i];
-                projection_ -= std::inner_product(abeg, aend, std::cbegin(qi_), zero) * qi_;
+                projection_ -= std::inner_product(std::cbegin(apex_), std::cend(apex_), std::cbegin(qi_), zero) * qi_;
             }
             projection_ *= projection_;
             using std::sqrt;
@@ -362,7 +363,7 @@ private :
                 furthest = it;
             }
         }
-        if (furthest == end) {
+        if (furthest == std::cend(_from)) {
             return false;
         }
         _to.push_back(std::move(*furthest));
@@ -432,9 +433,8 @@ private :
     partition(facet & _facet, point_list & _points)
     {
         auto it = std::cbegin(_points);
-        auto const end = std::cend(_points);
         value_type distance_ = zero;
-        while (it != end) {
+        while (it != std::cend(_points)) {
             auto const next = std::next(it);
             value_type d_ = _facet.distance(**it);
             if (eps < d_) {
@@ -534,7 +534,10 @@ private :
         bool
         operator < (ridge const & _other) const
         {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
             size_type const dimension_ = ordered_.size();
+#pragma clang diagnostic pop
             size_type i = 0;
             size_type j = 0;
             for (;;) {
@@ -698,7 +701,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             assert(outside_.empty());
             for (size_type const not_bth_facet : not_bth_facets_) {
                 facet & facet_ = facets_[not_bth_facet];
-                outside_.splice(outside_.cend(), std::move(facet_.outside_));
+                outside_.splice(std::cend(outside_), std::move(facet_.outside_));
                 facet_.vertices_.clear();
                 facet_.neighbours_.clear();
                 unrank_and_remove(not_bth_facet);
@@ -706,14 +709,14 @@ public : // largest possible simplex heuristic, convex hull algorithm
             assert(newfacets_.empty());
             for (size_type const bth_facet : bth_facets_) {
                 facet & facet_ = facets_[bth_facet];
-                outside_.splice(outside_.cend(), std::move(facet_.outside_));
+                outside_.splice(std::cend(outside_), std::move(facet_.outside_));
                 vertices_ = std::move(facet_.vertices_);
                 neighbours_ = std::move(facet_.neighbours_);
                 unrank_and_remove(bth_facet);
                 for (size_type const neighbour : neighbours_) {
                     if (is_invisible(neighbour)) { // is over-the-horizon facet?
-                        point_array const & horizon_ = ordered_[neighbour];
                         {
+                            point_array const & horizon_ = ordered_[neighbour];
                             assert(ridge_.empty());
                             ridge_.reserve(dimension_);
                             for (point_iterator const vertex : vertices_) { // facets intersection with keeping of points order as it is in visible facet
