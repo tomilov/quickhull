@@ -34,22 +34,22 @@ struct quick_hull
                value_type _eps = std::numeric_limits< value_type >::epsilon())
         : dimension_(_dimension)
         , eps(std::move(_eps))
-        , matrix_(_dimension)
-        , shadow_matrix_(_dimension)
-        , minor_()
-        , origin_(zero, _dimension)
+        , matrix_(dimension_)
+        , shadow_matrix_(dimension_)
+        , minor_(dimension_)
     {
         assert(1 < dimension_);
         assert(!(eps < zero));
-        size_type const minor_size = dimension_ - 1;
-        minor_.resize(minor_size);
-        for (size_type r = 0; r < minor_size; ++r) {
+        for (size_type r = 0; r < dimension_; ++r) {
             matrix_[r].resize(dimension_);
             shadow_matrix_[r].resize(dimension_);
+        }
+        size_type const minor_size = dimension_ - 1;
+        for (size_type r = 1; r < minor_size; ++r) {
             minor_[r].resize(minor_size);
         }
-        matrix_.back().resize(dimension_);
-        shadow_matrix_.back().resize(dimension_);
+        minor_.front().resize(dimension_);
+        minor_.back().resize(dimension_);
     }
 
     using point_array = std::vector< point_iterator >;
@@ -128,7 +128,6 @@ private :
     matrix matrix_;
     matrix shadow_matrix_;
     matrix minor_;
-    row origin_;
 
     void
     transpose() // transpose to cheaper filling columns with ones
@@ -255,14 +254,14 @@ private :
     }
 
     bool
-    orthogonalize(point_array const & _affine_space, size_type const _rank)
+    orthonormalize(point_array const & _affine_space, size_type const _rank, row const & _origin)
     {
         assert(!(dimension_ < _rank));
         auto vertex = std::begin(_affine_space);
         for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
             row & row_ = shadow_matrix_[r];
             std::copy_n(std::cbegin(**vertex), dimension_, std::begin(row_));
-            row_ -= origin_;
+            row_ -= _origin;
             ++vertex;
         }
         for (size_type i = 0; i < _rank; ++i) { // Householder transformation
@@ -303,14 +302,20 @@ private :
                 }
             }
         }
-        for (size_type i = 0; i < _rank; ++i) { // calculation of Q
+        return true;
+    }
+
+    void
+    forward_transformation(size_type const _rank) // calculation of Q
+    {
+        for (size_type i = 0; i < _rank; ++i) {
             row & qi_ = matrix_[i]; // matrix_ is Q after
             qi_ = zero;
             qi_[i] = one;
             size_type j = _rank;
             while (0 < j) {
                 --j;
-                row & qrj_ = shadow_matrix_[j];
+                row & qrj_ = shadow_matrix_[j]; // containing packed QR
                 value_type s_ = zero;
                 for (size_type k = j; k < dimension_; ++k) {
                     s_ += qrj_[k] * qi_[k];
@@ -320,20 +325,22 @@ private :
                 }
             }
         }
-        return true;
     }
 
     bool
     steal_best(point_list & _from, point_array & _to)
     {
         assert(!_to.empty());
-        std::copy_n(std::cbegin(*_to.back()), dimension_, std::begin(origin_));
         size_type const rank_ = _to.size() - 1;
-        if (!orthogonalize(_to, rank_)) {
+        assert(rank_ < dimension_);
+        row & origin_ = matrix_[rank_];
+        std::copy_n(std::cbegin(*_to.back()), dimension_, std::begin(origin_));
+        if (!orthonormalize(_to, rank_, origin_)) {
             return false;
         }
-        row & projection_ = shadow_matrix_.back(); // projection to orghogonal subspace
-        row & apex_ = shadow_matrix_.front();
+        forward_transformation(rank_);
+        row & projection_ = minor_.back();
+        row & apex_ = minor_.front();
         auto const abeg = std::begin(apex_);
         auto const aend = std::end(apex_);
         value_type distance_ = zero;
@@ -342,7 +349,7 @@ private :
         for (auto it = std::cbegin(_from); it != end; ++it) {
             std::copy_n(std::cbegin(**it), dimension_, abeg);
             apex_ -= origin_; // turn translated space into vector space
-            projection_ = apex_;
+            projection_ = apex_; // project onto orthogonal subspace
             for (size_type i = 0; i < rank_; ++i) {
                 row const & qi_ = matrix_[i];
                 projection_ -= std::inner_product(abeg, aend, std::cbegin(qi_), zero) * qi_;
@@ -589,6 +596,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         assert(!_vertices.empty());
         size_type const rank_ = _vertices.size() - 1;
         assert(!(dimension_ < rank_));
+        row & origin_ = minor_.back();
         std::copy_n(std::cbegin(*_vertices.back()), dimension_, std::begin(origin_));
         auto vertex = std::cbegin(_vertices);
         for (size_type r = 0; r < rank_; ++r) { // affine space -> vector space
