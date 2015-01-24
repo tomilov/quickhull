@@ -1,3 +1,24 @@
+/* Quickhull algorithm implementation
+ *
+ * Copyright (c) 2014-2015, Anatoliy V. Tomilov
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following condition is met:
+ * Redistributions of source code must retain the above copyright notice, this condition and the following disclaimer.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
 #pragma once
 
 #include <valarray>
@@ -16,15 +37,15 @@
 #include <cmath>
 #include <cassert>
 
-template< typename point_iterator >
+template< typename points_iterator >
 struct quick_hull
 {
 
-    static_assert(std::is_base_of< std::random_access_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >::value);
+    static_assert(std::is_base_of< std::random_access_iterator_tag, typename std::iterator_traits< points_iterator >::iterator_category >::value);
 
     using size_type = std::size_t;
 
-    using point = typename std::iterator_traits< point_iterator >::value_type;
+    using point = typename std::iterator_traits< points_iterator >::value_type;
     using value_type = typename point::value_type;
 
     size_type const dimension_;
@@ -52,8 +73,8 @@ struct quick_hull
         minor_.back().resize(dimension_);
     }
 
-    using point_array = std::vector< point_iterator >;
-    using point_list = std::list< point_iterator >;
+    using point_array = std::vector< points_iterator >;
+    using point_list = std::list< points_iterator >;
     using facet_array = std::vector< size_type >;
 
     struct facet // (d - 1)-dimensional face
@@ -261,6 +282,7 @@ private :
     orthonormalize(point_array const & _affine_space, size_type const _rank, row const & _origin)
     {
         assert(!(dimension_ < _rank));
+        assert(!(_affine_space.size() < _rank));
         auto vertex = std::begin(_affine_space);
         for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
             row & row_ = shadow_matrix_[r];
@@ -312,6 +334,7 @@ private :
     void
     forward_transformation(size_type const _rank) // calculation of Q
     {
+        assert(!(dimension_ < _rank));
         for (size_type i = 0; i < _rank; ++i) {
             row & qi_ = matrix_[i]; // matrix_ is Q after
             qi_ = zero;
@@ -453,7 +476,7 @@ private :
     size_type
     get_best_facet() const // select the facet with furthest (between all facets with non-empty outsides_ set) furthest point
     {
-        assert(ranking_meta_.size() == ranking_meta_.size());
+        assert(ranking_meta_.size() == ranking_.size());
         return std::prev(std::cend(ranking_))->second;
     }
 
@@ -555,8 +578,8 @@ private :
                     assert(i == dimension_);
                     break;
                 }
-                point_iterator const & lhs_ = ordered_[i];
-                point_iterator const & rhs_ = _other.ordered_[j];
+                points_iterator const & lhs_ = ordered_[i];
+                points_iterator const & rhs_ = _other.ordered_[j];
                 if (lhs_ < rhs_) {
                     return true;
                 } else if (rhs_ < lhs_) {
@@ -574,7 +597,7 @@ private :
     std::set< ridge > unique_ridges_;
 
     void
-    find_adjacent_facets(size_type const _facet, point_iterator const _apex)
+    find_adjacent_facets(size_type const _facet, points_iterator const _apex)
     {
         for (size_type i = 0; i < dimension_; ++i) {
             point_array const & ridge_ = ordered_[_facet];
@@ -618,7 +641,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
     }
 
     point_array
-    create_simplex(point_iterator const _beg, point_iterator const _end)
+    create_initial_simplex(points_iterator const _beg, points_iterator const _end)
     {
         // selection of (dimension_ + 1) affinely independent points
         point_array basis_;
@@ -638,7 +661,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             return basis_; // can't find affinely independent second point
         }
         { // rejudge 0-indexed point
-            point_iterator & first_ = basis_.front();
+            points_iterator & first_ = basis_.front();
             internal_set_.push_back(first_);
             first_ = std::move(basis_.back());
             basis_.pop_back();
@@ -695,7 +718,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             size_type best_facet = get_best_facet();
             point_list & best_facet_outsides_ = facets_[best_facet].outside_;
             assert(!best_facet_outsides_.empty());
-            point_iterator const apex = best_facet_outsides_.front();
+            points_iterator const apex = best_facet_outsides_.front();
             best_facet_outsides_.pop_front();
             process_visibles(best_facet, *apex);
             assert(outside_.empty());
@@ -719,7 +742,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                             point_array const & horizon_ = ordered_[neighbour];
                             assert(ridge_.empty());
                             ridge_.reserve(dimension_);
-                            for (point_iterator const vertex : vertices_) { // facets intersection with keeping of points order as it is in visible facet
+                            for (points_iterator const vertex : vertices_) { // facets intersection with keeping of points order as it is in visible facet
                                 if (std::binary_search(std::cbegin(horizon_), std::cend(horizon_), vertex)) {
                                     ridge_.push_back(vertex);
                                 } else {

@@ -113,7 +113,7 @@ main(int argc, char * argv[])
         using std::chrono::steady_clock;
         {
             steady_clock::time_point const start = steady_clock::now();
-            initial_simplex_ = quick_hull_.create_simplex(std::cbegin(points_), std::cend(points_));
+            initial_simplex_ = quick_hull_.create_initial_simplex(std::cbegin(points_), std::cend(points_));
             size_type const basis_size_ = initial_simplex_.size();
             steady_clock::time_point const end = steady_clock::now();
             std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
