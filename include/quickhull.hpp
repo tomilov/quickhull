@@ -599,8 +599,8 @@ private :
     void
     find_adjacent_facets(size_type const _facet, points_iterator const _apex)
     {
+        point_array const & ridge_ = ordered_[_facet];
         for (size_type i = 0; i < dimension_; ++i) {
-            point_array const & ridge_ = ordered_[_facet];
             if (ridge_[i] != _apex) {
                 auto position = unique_ridges_.insert({ridge_, _facet, i});
                 if (!position.second) {
