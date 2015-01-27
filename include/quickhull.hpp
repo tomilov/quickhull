@@ -86,7 +86,7 @@ struct quick_hull
         point_array vertices_; // dimension_ points (oriented)
         point_list outside_; // if empty, then is convex hull's facet, else the first point (i.e. outside_.front()) is the furthest point from this facet
         facet_array neighbours_; // neighbouring facets
-        point_deque coplanar_; // coplanar points, for resulting convex hull it is guaranted that they lies within the facet or on a facet's ridge
+        point_deque coplanar_; // coplanar points, for resulting convex hull it is guaranted that they lies within the facet or on a facet's ridge (in later case these points can be non-unique)
 
         // hyperplane equation
         normal normal_; // components of normalized normal vector
@@ -603,8 +603,8 @@ private :
     void
     find_adjacent_facets(size_type const _facet, points_iterator const _apex)
     {
+        point_array const & ridge_ = ordered_[_facet];
         for (size_type i = 0; i < dimension_; ++i) {
-            point_array const & ridge_ = ordered_[_facet];
             if (ridge_[i] != _apex) {
                 auto position = unique_ridges_.insert({ridge_, _facet, i});
                 if (!position.second) {
