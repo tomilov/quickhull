@@ -133,17 +133,17 @@ main(int argc, char * argv[])
     auto const & facets_ = quick_hull_.facets_;
     size_type const facets_count_ = facets_.size();
     std::cout << "#number of facets: " << facets_count_ << std::endl;
-    std::ostream & os_ = std::cout;
-    os_ << "clear\n";
-    os_ << "set autoscale\n";
-    os_ << "set view equal xyz\n";
+    std::ostream & gnuplot_ = std::cout;
+    gnuplot_ << "clear\n";
+    gnuplot_ << "set autoscale\n";
+    gnuplot_ << "set view equal xyz\n";
     switch (dimension_) {
     case 2 : {
-        os_ << "plot";
+        gnuplot_ << "plot";
         break;
     }
     case 3 : {
-        os_ << "splot";
+        gnuplot_ << "splot";
         break;
     }
     default : {
@@ -152,49 +152,58 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     }
-    os_ << " '-' with points notitle pointtype 7 pointsize 1.5 linetype 1, '-' with points notitle, '-' with labels offset character 0, character 1 notitle";
+    gnuplot_ << " '-' with points notitle pointtype 4 pointsize 1.5 linetype 1, '-' with points notitle, '-' with labels offset character 0, character 1 notitle";
     for (size_type i = 0; i < facets_count_; ++i) {
-        os_ << ", '-' with lines notitle";
+        gnuplot_ << ", '-' with lines notitle, '-' with points notitle pointtype 6 pointsize 1.5 linetype 4";
     }
-    os_ << ";\n";
+    gnuplot_ << ";\n";
     for (auto const p : initial_simplex_) {
         point const & point_ = *p;
         for (value_type const & coordinate_ : point_) {
-            os_ << coordinate_ << ' ';
+            gnuplot_ << coordinate_ << ' ';
         }
-        os_ << '\n';
+        gnuplot_ << '\n';
     }
-    os_ << "e\n";
+    gnuplot_ << "e\n";
     for (size_type i = 0; i < count_; ++i) {
         point const & point_ = points_[i];
         for (value_type const & coordinate_ : point_) {
-            os_ << coordinate_ << ' ';
+            gnuplot_ << coordinate_ << ' ';
         }
-        os_ << '\n';
+        gnuplot_ << '\n';
     }
-    os_ << "e\n";
+    gnuplot_ << "e\n";
     for (size_type i = 0; i < count_; ++i) {
         point const & point_ = points_[i];
         for (value_type const & coordinate_ : point_) {
-            os_ << coordinate_ << ' ';
+            gnuplot_ << coordinate_ << ' ';
         }
-        os_ << i << '\n';
+        gnuplot_ << i << '\n';
     }
-    os_ << "e\n";
+    gnuplot_ << "e\n";
     for (size_type i = 0; i < facets_count_; ++i) {
-        auto const & vertices_ = facets_[i].vertices_;
+        auto const & facet_ = facets_[i];
+        auto const & vertices_ = facet_.vertices_;
         for (auto const vertex_ : vertices_) {
             for (value_type const & coordinate_ : *vertex_) {
-                os_ << coordinate_ << ' ';
+                gnuplot_ << coordinate_ << ' ';
             }
-            os_ << '\n';
+            gnuplot_ << '\n';
         }
         point const & first_vertex_ = *vertices_.front();
         for (value_type const & coordinate_ : first_vertex_) {
-            os_ << coordinate_ << ' ';
+            gnuplot_ << coordinate_ << ' ';
         }
-        os_ << "\ne\n";
+        gnuplot_ << "\n";
+        gnuplot_ << "e\n";
+        for (auto const p : facet_.coplanar_) {
+            for (value_type const & coordinate_ : *p) {
+                gnuplot_ << coordinate_ << ' ';
+            }
+            gnuplot_ << '\n';
+        }
+        gnuplot_ << "e\n";
     }
-    os_ << std::flush;
+    gnuplot_ << std::flush;
     return EXIT_SUCCESS;
 }

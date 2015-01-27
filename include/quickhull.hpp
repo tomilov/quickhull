@@ -74,6 +74,7 @@ struct quick_hull
     }
 
     using point_array = std::vector< points_iterator >;
+    using point_deque = std::deque< points_iterator >;
     using point_list = std::list< points_iterator >;
     using facet_array = std::vector< size_type >;
 
@@ -82,9 +83,10 @@ struct quick_hull
 
         using normal = std::valarray< value_type >;
 
-        point_array vertices_; // d points (oriented)
+        point_array vertices_; // dimension_ points (oriented)
         point_list outside_; // if empty, then is convex hull's facet, else the first point (i.e. outside_.front()) is the furthest point from this facet
         facet_array neighbours_; // neighbouring facets
+        point_deque coplanar_; // coplanar points, for resulting convex hull it is guaranted that they lies within the facet or on a facet's ridge
 
         // hyperplane equation
         normal normal_; // components of normalized normal vector
@@ -467,6 +469,8 @@ private :
                 } else {
                     _facet.outside_.splice(std::cend(_facet.outside_), _points, it);
                 }
+            } else if (!(d_ < -eps)) {
+                _facet.coplanar_.push_back(*it);
             }
             it = next;
         }
@@ -727,6 +731,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 outside_.splice(std::cend(outside_), std::move(facet_.outside_));
                 facet_.vertices_.clear();
                 facet_.neighbours_.clear();
+                facet_.coplanar_.clear();
                 unrank_and_remove(not_bth_facet);
             }
             assert(newfacets_.empty());
@@ -735,6 +740,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 outside_.splice(std::cend(outside_), std::move(facet_.outside_));
                 vertices_ = std::move(facet_.vertices_);
                 neighbours_ = std::move(facet_.neighbours_);
+                facet_.coplanar_.clear();
                 unrank_and_remove(bth_facet);
                 for (size_type const neighbour : neighbours_) {
                     if (is_invisible(neighbour)) { // is over-the-horizon facet?
