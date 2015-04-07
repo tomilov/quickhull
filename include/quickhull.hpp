@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <utility>
 #include <numeric>
+#include <limits>
 
 #include <cmath>
 #include <cassert>
@@ -478,7 +479,7 @@ private :
     }
 
     size_type
-    get_best_facet() const // select the facet with furthest (between all facets with non-empty outsides_ set) furthest point
+    get_best_facet() const // select the facet with furthest (between all facets with non-empty outsides_ set) point
     {
         assert(ranking_meta_.size() == ranking_.size());
         return std::prev(std::cend(ranking_))->second;
@@ -588,7 +589,7 @@ private :
                     return true;
                 } else if (rhs_ < lhs_) {
                     break;
-                } else { // equivalent
+                } else { // are equivalent
                     ++i;
                     ++j;
                 }
