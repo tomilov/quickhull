@@ -605,13 +605,14 @@ private :
     find_adjacent_facets(size_type const _facet, points_iterator const _apex)
     {
         point_array const & ridge_ = ordered_[_facet];
+        facet & facet_ = facets_[_facet];
         for (size_type i = 0; i < dimension_; ++i) {
             if (ridge_[i] != _apex) {
                 auto position = unique_ridges_.insert({ridge_, _facet, i});
                 if (!position.second) {
                     size_type const neighbour = position.first->facet_;
                     facets_[neighbour].neighbours_.push_back(_facet);
-                    facets_[_facet].neighbours_.push_back(neighbour);
+                    facet_.neighbours_.push_back(neighbour);
                     unique_ridges_.erase(position.first);
                 }
             }
