@@ -34,6 +34,10 @@
 #include <utility>
 #include <numeric>
 #include <limits>
+#ifdef _DEBUG
+#include <iostream>
+#include <iomanip>
+#endif
 
 #include <cmath>
 #include <cassert>
@@ -89,7 +93,7 @@ struct quick_hull
         facet_array neighbours_; // neighbouring facets
         point_deque coplanar_; // coplanar points, for resulting convex hull it is guaranted that they lies within the facet or on a facet's ridge (in later case these points can be non-unique)
 
-        // hyperplane equation
+        // equation of hyperplane supported the facet
         normal normal_; // components of normalized normal vector
         value_type D; // distance from the origin to the hyperplane
 
@@ -135,15 +139,17 @@ struct quick_hull
 
     };
 
-    using facets_storage = std::deque< facet >;
+    using facets = std::deque< facet >;
 
-    facets_storage facets_;
+    facets facets_;
 
     value_type
     cos_of_dihedral_angle(facet const & _this, facet const & _other) const
     {
         return std::inner_product(std::cbegin(_this.normal_), std::cend(_this.normal_), std::cbegin(_other.normal_), zero);
     }
+
+    using ordered = std::deque< point_array >;
 
 private :
 
@@ -237,14 +243,14 @@ private :
             for (size_type a = 1 + i; a < _dimension; ++a) {
                 row & a_ = minor_[a - 1];
                 value_type const & ai_ = _matrix[a][i];
-                for (size_type b = 1 + i; b < _dimension; ++ b) {
+                for (size_type b = 1 + i; b < _dimension; ++b) {
                     a_[b - 1] = ai_ * ri_[b];
                 }
             }
             for (size_type a = 1 + i; a < _dimension; ++a) {
                 row const & a_ = minor_[a - 1];
                 row & ra_ = _matrix[a];
-                for (size_type b = 1 + i; b < _dimension; ++ b) {
+                for (size_type b = 1 + i; b < _dimension; ++b) {
                     ra_[b] -= a_[b - 1];
                 }
             }
@@ -397,7 +403,7 @@ private :
         return true;
     }
 
-    std::deque< point_array > ordered_; // ordered, but not oriented vertices of facets
+    ordered ordered_; // ordered, but not oriented vertices of facets
     std::set< size_type, std::greater< size_type > > removed_facets_;
 
     size_type
@@ -583,8 +589,8 @@ private :
                     assert(i == dimension_);
                     break;
                 }
-                points_iterator const & lhs_ = ordered_[i];
-                points_iterator const & rhs_ = _other.ordered_[j];
+                points_iterator const lhs_ = ordered_[i];
+                points_iterator const rhs_ = _other.ordered_[j];
                 if (lhs_ < rhs_) {
                     return true;
                 } else if (rhs_ < lhs_) {
@@ -709,7 +715,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         return basis_;
     }
 
-    void
+    ordered
     create_convex_hull()
     {
         assert(facets_.size() == dimension_ + 1);
@@ -778,21 +784,161 @@ public : // largest possible simplex heuristic, convex hull algorithm
         assert(outside_.empty());
         { // compactify
             size_type source = facets_.size();
+            assert(ordered_.size() == source);
             for (size_type const destination : removed_facets_) {
                 if (destination != --source) {
                     facet & facet_ = facets_[destination];
                     facet_ = std::move(facets_.back());
+                    ordered_[destination] = std::move(ordered_.back());
                     for (size_type const neighbour : facet_.neighbours_) {
                         replace_neighbour(neighbour, source, destination);
                     }
                 }
                 facets_.pop_back();
+                ordered_.pop_back();
             }
             facets_.shrink_to_fit();
+            ordered_.shrink_to_fit();
             removed_facets_.clear();
         }
-        ordered_.clear();
-        ordered_.shrink_to_fit();
-    } // Please check the orientation by yourself (using distance to inner point calculations). Then check Euler–Poincaré characteristic. If not convex, then increase eps properly.
+        return std::move(ordered_);
+    }
+
+    bool
+    check(ordered const & _ordered) const
+    {
+        // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig. Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
+        // check whether the inner point is inside WRT each hull facet
+        std::set< points_iterator > surface_points_;
+        size_type facets_count_ = 0;
+        {
+            point_array opposite_points_;
+            opposite_points_.reserve(dimension_);
+            for (facet const & facet_ : facets_) {
+                point_array const & vertices_ = _ordered[facets_count_];
+                surface_points_.insert(std::cbegin(vertices_), std::cend(vertices_));
+                for (size_type const n : facet_.neighbours_) {
+                    point_array const & neighbouring_vertices_  = _ordered[n];
+                    std::set_difference(std::cbegin(neighbouring_vertices_), std::cend(neighbouring_vertices_),
+                                        std::cbegin(vertices_), std::cend(vertices_),
+                                        std::back_inserter(opposite_points_));
+                }
+                for (points_iterator const p : opposite_points_) {
+                    if (eps < facet_.distance(*p)) {
+                        return false; // facet is not locally convex at all its ridges
+                    }
+                }
+                opposite_points_.clear();
+                ++facets_count_;
+            }
+        }
+        row inner_point_(zero, dimension_);
+        for (points_iterator const vertex : surface_points_) {
+            size_type i = 0;
+            for (value_type const & x : *vertex) {
+                inner_point_[i] += x;
+                ++i;
+            }
+        }
+        inner_point_ /= value_type(surface_points_.size());
+        for (facet const & facet_ : facets_) {
+            if (!(facet_.distance(inner_point_) < -eps)) {
+                return false; // inner point is not on negative side of all facets
+            }
+        }
+        row ray_(zero, dimension_);
+        {
+            facet const & first_ = facets_.front();
+            for (points_iterator const vertex : first_.vertices_) {
+                size_type i = 0;
+                for (value_type const & x : *vertex) {
+                    ray_[i] += x;
+                    ++i;
+                }
+            }
+            ray_ /= value_type(dimension_);
+            ray_ -= inner_point_;
+            if (!(eps < std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero))) {
+                return false;
+            }
+        }
+        matrix gauss_(dimension_);
+        for (row & row_ : gauss_) {
+            row_.resize(dimension_ + 1);
+        }
+        row intersection_point_(zero, dimension_);
+        for (size_type f = 1; f < facets_count_; ++f) {
+            facet const & facet_ = facets_[f];
+            value_type const denominator_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(facet_.normal_), zero);
+            using std::abs;
+            if (!(eps < abs(denominator_))) {
+                return false;
+            }
+            value_type const factor_ = facet_.distance(inner_point_) / denominator_;
+            if (!(factor_ < -eps)) {
+                continue;
+            }
+            intersection_point_ = inner_point_ - ray_ * factor_;
+            assert(!(eps < abs(facet_.distance(intersection_point_))));
+            for (size_type v = 0; v < dimension_; ++v) {
+                auto beg = std::cbegin(*facet_.vertices_[v]);
+                for (size_type r = 0; r < dimension_; ++r) {
+                    gauss_[r][v] = *beg;
+                    ++beg;
+                }
+            }
+            for (size_type r = 0; r < dimension_; ++r) {
+                gauss_[r][dimension_] = intersection_point_[r];
+            }
+            // Gaussian elimination
+            for (size_type i = 0; i < dimension_; ++i) {
+                size_type p = i;
+                using std::abs;
+                value_type max_ = abs(gauss_[p][i]);
+                size_type pivot = p;
+                while (++p < dimension_) {
+                    value_type y_ = abs(gauss_[p][i]);
+                    if (max_ < y_) {
+                        max_ = std::move(y_);
+                        pivot = p;
+                    }
+                }
+                assert(eps < max_); // not singular
+                row & gi_ = gauss_[i];
+                if (pivot != i) {
+                    gi_.swap(gauss_[pivot]);
+                }
+                for (size_type j = i + 1; j < dimension_; ++j) {
+                    row & gj_ = gauss_[j];
+                    value_type & gji_ = gj_[i];
+                    gji_ /= max_;
+                    for (size_type k = i + 1; k <= dimension_; ++k) { // gj_[dimension_] -= gji_ * gi_[dimension_]; inclusive
+                        gj_[k] -= gji_ * gi_[k];
+                    }
+                    gji_ = zero;
+                }
+            } // gauss_ is upper triangular now
+            bool in_range_ = true;
+            value_type sum_ = zero;
+            size_type i = dimension_;
+            while (0 < i) {
+                --i;
+                row & gi_ = gauss_[i];
+                value_type & xi_ = gi_[dimension_];
+                for (size_type j = i + 1; j < dimension_; ++j) {
+                    xi_ -= gi_[j] * gauss_[j][dimension_];
+                }
+                xi_ /= gi_[i];
+                if (xi_ < -eps) {
+                    in_range_ = false;
+                }
+                sum_ += xi_;
+            }
+            if (in_range_ && !(eps < abs(sum_ - one))) {
+                return false;
+            }
+        }
+        return true;
+    }
 
 };
