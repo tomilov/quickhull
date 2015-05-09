@@ -36,6 +36,7 @@
 #include <limits>
 #ifdef _DEBUG
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 #endif
 
@@ -823,6 +824,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                                         std::cbegin(vertices_), std::cend(vertices_),
                                         std::back_inserter(opposite_points_));
                 }
+                assert(opposite_points_.size() == dimension_);
                 for (points_iterator const p : opposite_points_) {
                     if (eps < facet_.distance(*p)) {
                         return false; // facet is not locally convex at all its ridges
@@ -867,10 +869,13 @@ public : // largest possible simplex heuristic, convex hull algorithm
             row_.resize(dimension_ + 1);
         }
         row intersection_point_(zero, dimension_);
+#ifndef NDEBUG
+        std::valarray< size_type > permutations_(size_type(0), dimension_);
+#endif
+        using std::abs;
         for (size_type f = 1; f < facets_count_; ++f) {
             facet const & facet_ = facets_[f];
             value_type const denominator_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(facet_.normal_), zero);
-            using std::abs;
             if (!(eps < abs(denominator_))) {
                 return false;
             }
@@ -890,6 +895,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
             for (size_type r = 0; r < dimension_; ++r) {
                 gauss_[r][dimension_] = intersection_point_[r];
             }
+#ifndef NDEBUG
+            std::iota(std::begin(permutations_), std::end(permutations_), size_type(0));
+#endif
             // Gaussian elimination
             for (size_type i = 0; i < dimension_; ++i) {
                 size_type p = i;
@@ -907,6 +915,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 row & gi_ = gauss_[i];
                 if (pivot != i) {
                     gi_.swap(gauss_[pivot]);
+#ifndef NDEBUG
+                    std::swap(permutations_[i], permutations_[pivot]);
+#endif
                 }
                 for (size_type j = i + 1; j < dimension_; ++j) {
                     row & gj_ = gauss_[j];
@@ -934,10 +945,43 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 }
                 sum_ += xi_;
             }
+#ifndef NDEBUG
+            for (size_type p = 0; p < dimension_; ++p) {
+                size_type & to_ = permutations_[p];
+                if (to_ != p) {
+                    gauss_[p].swap(gauss_[to_]);
+                    std::swap(permutations_[to_], to_);
+                }
+
+            }
+            for (size_type v = 0; v < dimension_; ++v) {
+                auto beg = std::cbegin(*facet_.vertices_[v]);
+                for (size_type r = 0; r < dimension_; ++r) {
+                    gauss_[r][v] = *beg;
+                    ++beg;
+                }
+            }
+            row resulting_point_(zero, dimension_);
+            for (size_type r = 0; r < dimension_; ++r) {
+                row & gr_ = gauss_[r];
+                value_type & x_ = resulting_point_[r];
+                x_ = zero;
+                for (size_type k = 0; k < dimension_; ++k) {
+                    x_ += gr_[k] * gauss_[k][dimension_];
+                }
+            }
+            resulting_point_ -= intersection_point_;
+            resulting_point_ *= resulting_point_;
+            using std::sqrt;
+            std::cerr << std::setprecision(10) << sqrt(resulting_point_.sum()) << "\t\t\t" << sum_ << std::endl;
+#endif
             if (in_range_ && !(eps < abs(sum_ - one))) {
                 return false;
             }
         }
+#ifndef NDEBUG
+        std::cerr << std::endl;
+#endif
         return true;
     }
 

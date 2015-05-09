@@ -21,21 +21,27 @@ main(int argc, char * argv[])
 {
     using size_type = std::size_t;
 
+    std::ofstream ofs_;
+    ofs_.open("/tmp/log.log");
+
+    std::ostream & out_ = ofs_;//std::cout;
+    std::ostream & err_ = ofs_;//std::cerr;
+
     std::ifstream ifs_;
     if (!(argc < 2)) {
         ifs_.open(argv[1]);
         if (!ifs_.is_open()) {
-            std::cout << std::flush;
-            std::cerr << "cannot open the file" << std::endl;
+            out_ << std::flush;
+            err_ << "cannot open the file" << std::endl;
             return EXIT_FAILURE;
         }
     }
     std::istream & in_ = ifs_.is_open() ? ifs_ : std::cin;
-    std::cout << "#read file: " << ((argc < 2) ? "stdin" : argv[1]) << '\n';
+    out_ << "#read file: " << ((argc < 2) ? "stdin" : argv[1]) << '\n';
     std::string line_;
     if (!std::getline(in_, line_)) {
-        std::cout << std::flush;
-        std::cerr << "io: dimension line" << std::endl;
+        out_ << std::flush;
+        err_ << "io: dimension line" << std::endl;
         return EXIT_FAILURE;
     }
     std::istringstream iss_;
@@ -43,22 +49,22 @@ main(int argc, char * argv[])
     {
         iss_.str(line_);
         if (!(iss_ >> dimension_)) {
-            std::cout << std::flush;
-            std::cerr << "io: dimension" << std::endl;
+            out_ << std::flush;
+            err_ << "io: dimension" << std::endl;
             return EXIT_FAILURE;
         }
         {
             using char_type = typename std::string::value_type;
-            std::cout << "#command line:";
+            out_ << "#command line:";
             std::istreambuf_iterator< char_type > const ibeg(iss_), iend;
-            std::copy(ibeg, iend, std::ostreambuf_iterator< char_type >(std::cout));
-            std::cout << '\n';
+            std::copy(ibeg, iend, std::ostreambuf_iterator< char_type >(out_));
+            out_ << '\n';
         }
         iss_.clear();
     }
     if (!std::getline(in_, line_)) {
-        std::cout << std::flush;
-        std::cerr << "io: count line" << std::endl;
+        out_ << std::flush;
+        err_ << "io: count line" << std::endl;
         return EXIT_FAILURE;
     }
     using value_type = double;
@@ -68,22 +74,22 @@ main(int argc, char * argv[])
     {
         iss_.str(line_);
         if (!(iss_ >> count_)) {
-            std::cout << std::flush;
-            std::cerr << "io: count" << std::endl;
+            out_ << std::flush;
+            err_ << "io: count" << std::endl;
             return EXIT_FAILURE;
         }
         iss_.clear();
     }
     if (!(dimension_ < count_)) {
-        std::cout << std::flush;
-        std::cerr << "io: points count is less than or equal than dimensionality" << std::endl;
+        out_ << std::flush;
+        err_ << "io: points count is less than or equal than dimensionality" << std::endl;
         return EXIT_FAILURE;
     }
     points points_(count_);
     for (size_type i = 0; i < count_; ++i) {
         if (!std::getline(in_, line_)) {
-            std::cout << std::flush;
-            std::cerr << "io: line count error" << std::endl;
+            out_ << std::flush;
+            err_ << "io: line count error" << std::endl;
             return EXIT_FAILURE;
         }
         point & point_ = points_[i];
@@ -92,17 +98,17 @@ main(int argc, char * argv[])
             iss_.str(line_);
             for (size_type j = 0; j < dimension_; ++j) {
                 if (!(iss_ >> point_[j])) {
-                    std::cout << std::flush;
-                    std::cerr << "io: bad value at line " << j << " of data" << std::endl;
+                    out_ << std::flush;
+                    err_ << "io: bad value at line " << j << " of data" << std::endl;
                     return EXIT_FAILURE;
                 }
             }
             iss_.clear();
         }
     }
-    //std::cout.rdbuf()->pubsetbuf(nullptr, 0);
-    std::cout << "#D = " << dimension_ << '\n';
-    std::cout << "#N = " << count_ << '\n';
+    //out_.rdbuf()->pubsetbuf(nullptr, 0);
+    out_ << "#D = " << dimension_ << '\n';
+    out_ << "#N = " << count_ << '\n';
     using quick_hull_type = quick_hull< typename points::const_iterator >;
     using std::sqrt;
     quick_hull_type quick_hull_(dimension_, sqrt(std::numeric_limits< value_type >::epsilon()));
@@ -116,10 +122,10 @@ main(int argc, char * argv[])
             initial_simplex_ = quick_hull_.create_initial_simplex(std::cbegin(points_), std::cend(points_));
             size_type const basis_size_ = initial_simplex_.size();
             steady_clock::time_point const end = steady_clock::now();
-            std::cout << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
+            out_ << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
             if (basis_size_ != dimension_ + 1) {
-                std::cout << std::flush;
-                std::cerr << "cannot create a simplex: size of basis: " << basis_size_ << std::endl;
+                out_ << std::flush;
+                err_ << "cannot create a simplex: size of basis: " << basis_size_ << std::endl;
                 return EXIT_FAILURE;
             }
         }
@@ -127,18 +133,18 @@ main(int argc, char * argv[])
             steady_clock::time_point const start = steady_clock::now();
             auto const ordered_ = quick_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
-            std::cout << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
+            out_ << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
             if (!quick_hull_.check(ordered_)) {
-                std::cout << std::flush;
-                std::cerr << "resulting structure is not valid convex polytope" << std::endl;
+                out_ << std::flush;
+                err_ << "resulting structure is not valid convex polytope" << std::endl;
                 return EXIT_FAILURE;
             }
         }
     }
     auto const & facets_ = quick_hull_.facets_;
     size_type const facets_count_ = facets_.size();
-    std::cout << "#number of facets: " << facets_count_ << std::endl;
-    std::ostream & gnuplot_ = std::cout;
+    out_ << "#number of facets: " << facets_count_ << std::endl;
+    std::ostream & gnuplot_ = out_;
     gnuplot_ << "clear\n";
     gnuplot_ << "set autoscale\n";
     gnuplot_ << "set view equal xyz\n";
@@ -152,8 +158,8 @@ main(int argc, char * argv[])
         break;
     }
     default : {
-        std::cout << std::flush;
-        std::cerr << "dimensionality value (" << dimension_ << ") is out of supported range: cannot generate output" << std::endl;
+        out_ << std::flush;
+        err_ << "dimensionality value (" << dimension_ << ") is out of supported range: cannot generate output" << std::endl;
         return EXIT_FAILURE;
     }
     }
