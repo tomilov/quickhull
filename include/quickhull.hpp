@@ -212,34 +212,45 @@ private :
 
     value_type
     det(matrix & _matrix, size_type const _dimension) // based on LUP decomposition (complexity is 2 * n^3 / 3 + O(n^2) vs 4 * n^3 / 3 + O(n^2) for QR decomposition via Householder reflections)
-    {
-        assert(0 < _dimension);
+    { // produces lower unit triangular matrix and upper triangular
+        assert(0 < _dimension);/*
+#ifndef NDEBUG
+        std::cerr << "a{" << std::endl;
+        for (size_type i = 0; i < _dimension; ++i) {
+            for (size_type j = 0; j < _dimension; ++j) {
+                std::cerr << _matrix[i][j] << ' ';
+            }
+            std::cerr << std::endl;
+        }
+        std::cerr << '}' << std::endl;
+#endif*/
         value_type det_ = one;
         for (size_type i = 0; i < _dimension; ++i) {
-            size_type p = i;
+            row & ri_ = _matrix[i];
             using std::abs;
-            value_type max_ = abs(_matrix[p][i]);
-            size_type pivot = p;
-            while (++p < _dimension) {
-                value_type y_ = abs(_matrix[p][i]);
-                if (max_ < y_) {
-                    max_ = std::move(y_);
-                    pivot = p;
+            value_type max_ = abs(ri_[i]);
+            size_type pivot = i;
+            {
+                size_type p = i;
+                while (++p < _dimension) {
+                    value_type y_ = abs(_matrix[p][i]);
+                    if (max_ < y_) {
+                        max_ = std::move(y_);
+                        pivot = p;
+                    }
                 }
             }
             if (!(eps < max_)) { // regular?
                 return zero; // singular
             }
-            row & ri_ = _matrix[i];
             if (pivot != i) {
                 det_ = -det_; // each permutation flips sign of det
                 ri_.swap(_matrix[pivot]);
             }
             value_type & dia_ = ri_[i];
-            value_type const inv_ = one / dia_;
-            det_ *= std::move(dia_); // det is multiple of diagonal elements
+            det_ *= dia_; // det is multiple of diagonal elements
             for (size_type j = 1 + i; j < _dimension; ++j) {
-                _matrix[j][i] *= inv_;
+                _matrix[j][i] /= dia_;
             }
             for (size_type a = 1 + i; a < _dimension; ++a) {
                 row & a_ = minor_[a - 1];
@@ -255,7 +266,17 @@ private :
                     ra_[b] -= a_[b - 1];
                 }
             }
+        }/*
+#ifndef NDEBUG
+        std::cerr << "lu{" << std::endl;
+        for (size_type i = 0; i < _dimension; ++i) {
+            for (size_type j = 0; j < _dimension; ++j) {
+                std::cerr << _matrix[i][j] << ' ';
+            }
+            std::cerr << std::endl;
         }
+        std::cerr << '}' << std::endl;
+#endif*/
         return det_;
     }
 
@@ -900,19 +921,21 @@ public : // largest possible simplex heuristic, convex hull algorithm
 #endif
             // Gaussian elimination
             for (size_type i = 0; i < dimension_; ++i) {
-                size_type p = i;
+                row & gi_ = gauss_[i];
                 using std::abs;
-                value_type max_ = abs(gauss_[p][i]);
-                size_type pivot = p;
-                while (++p < dimension_) {
-                    value_type y_ = abs(gauss_[p][i]);
-                    if (max_ < y_) {
-                        max_ = std::move(y_);
-                        pivot = p;
+                value_type max_ = abs(gi_[i]);
+                size_type pivot = i;
+                {
+                    size_type p = i;
+                    while (++p < dimension_) {
+                        value_type y_ = abs(gauss_[p][i]);
+                        if (max_ < y_) {
+                            max_ = std::move(y_);
+                            pivot = p;
+                        }
                     }
                 }
                 assert(eps < max_); // not singular
-                row & gi_ = gauss_[i];
                 if (pivot != i) {
                     gi_.swap(gauss_[pivot]);
 #ifndef NDEBUG
@@ -931,28 +954,30 @@ public : // largest possible simplex heuristic, convex hull algorithm
             } // gauss_ is upper triangular now
             bool in_range_ = true;
             value_type sum_ = zero;
-            size_type i = dimension_;
-            while (0 < i) {
-                --i;
-                row & gi_ = gauss_[i];
-                value_type & xi_ = gi_[dimension_];
-                for (size_type j = i + 1; j < dimension_; ++j) {
-                    xi_ -= gi_[j] * gauss_[j][dimension_];
+            {
+                size_type i = dimension_;
+                while (0 < i) {
+                    --i;
+                    row & gi_ = gauss_[i];
+                    value_type & xi_ = gi_[dimension_];
+                    for (size_type j = i + 1; j < dimension_; ++j) {
+                        xi_ -= gi_[j] * gauss_[j][dimension_];
+                    }
+                    xi_ /= gi_[i];
+                    if (xi_ < -eps) {
+                        in_range_ = false;
+                    }
+                    sum_ += xi_;
                 }
-                xi_ /= gi_[i];
-                if (xi_ < -eps) {
-                    in_range_ = false;
-                }
-                sum_ += xi_;
             }
 #ifndef NDEBUG
-            for (size_type p = 0; p < dimension_; ++p) {
-                size_type & to_ = permutations_[p];
-                if (to_ != p) {
-                    gauss_[p].swap(gauss_[to_]);
-                    std::swap(permutations_[to_], to_);
+            for (size_type from_ = 0; from_ < dimension_; ++from_) {
+                row & gf_ = gauss_[from_];
+                size_type & to_ = permutations_[from_];
+                while (to_ != from_) {
+                    gf_.swap(gauss_[to_]);
+                    std::swap(to_, permutations_[to_]);
                 }
-
             }
             for (size_type v = 0; v < dimension_; ++v) {
                 auto beg = std::cbegin(*facet_.vertices_[v]);
@@ -974,14 +999,13 @@ public : // largest possible simplex heuristic, convex hull algorithm
             resulting_point_ *= resulting_point_;
             using std::sqrt;
             std::cerr << std::setprecision(10) << sqrt(resulting_point_.sum()) << "\t\t\t" << sum_ << std::endl;
+            std::copy(std::cbegin(permutations_), std::cend(permutations_), std::ostream_iterator< size_type >(std::cerr, " "));
+            std::cerr << std::endl;
 #endif
             if (in_range_ && !(eps < abs(sum_ - one))) {
                 return false;
             }
         }
-#ifndef NDEBUG
-        std::cerr << std::endl;
-#endif
         return true;
     }
 
