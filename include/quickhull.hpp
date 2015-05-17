@@ -34,11 +34,6 @@
 #include <utility>
 #include <numeric>
 #include <limits>
-#ifdef _DEBUG
-#include <iostream>
-#include <fstream>
-#include <iomanip>
-#endif
 
 #include <cmath>
 #include <cassert>
@@ -213,17 +208,7 @@ private :
     value_type
     det(matrix & _matrix, size_type const _dimension) // based on LUP decomposition (complexity is 2 * n^3 / 3 + O(n^2) vs 4 * n^3 / 3 + O(n^2) for QR decomposition via Householder reflections)
     { // produces lower unit triangular matrix and upper triangular
-        assert(0 < _dimension);/*
-#ifndef NDEBUG
-        std::cerr << "a{" << std::endl;
-        for (size_type i = 0; i < _dimension; ++i) {
-            for (size_type j = 0; j < _dimension; ++j) {
-                std::cerr << _matrix[i][j] << ' ';
-            }
-            std::cerr << std::endl;
-        }
-        std::cerr << '}' << std::endl;
-#endif*/
+        assert(0 < _dimension);
         value_type det_ = one;
         for (size_type i = 0; i < _dimension; ++i) {
             row & ri_ = _matrix[i];
@@ -266,17 +251,7 @@ private :
                     ra_[b] -= a_[b - 1];
                 }
             }
-        }/*
-#ifndef NDEBUG
-        std::cerr << "lu{" << std::endl;
-        for (size_type i = 0; i < _dimension; ++i) {
-            for (size_type j = 0; j < _dimension; ++j) {
-                std::cerr << _matrix[i][j] << ' ';
-            }
-            std::cerr << std::endl;
         }
-        std::cerr << '}' << std::endl;
-#endif*/
         return det_;
     }
 
@@ -839,8 +814,8 @@ public : // largest possible simplex heuristic, convex hull algorithm
             for (facet const & facet_ : facets_) {
                 point_array const & vertices_ = _ordered[facets_count_];
                 surface_points_.insert(std::cbegin(vertices_), std::cend(vertices_));
-                for (size_type const n : facet_.neighbours_) {
-                    point_array const & neighbouring_vertices_  = _ordered[n];
+                for (size_type const neighbour : facet_.neighbours_) {
+                    point_array const & neighbouring_vertices_  = _ordered[neighbour];
                     std::set_difference(std::cbegin(neighbouring_vertices_), std::cend(neighbouring_vertices_),
                                         std::cbegin(vertices_), std::cend(vertices_),
                                         std::back_inserter(opposite_points_));
@@ -864,47 +839,40 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
         }
         inner_point_ /= value_type(surface_points_.size());
-        for (facet const & facet_ : facets_) {
-            if (!(facet_.distance(inner_point_) < -eps)) {
-                return false; // inner point is not on negative side of all facets
-            }
+        facet const & first_ = facets_.front();
+        if (!(first_.distance(inner_point_) < -eps)) {
+            return false;
         }
         row ray_(zero, dimension_);
-        {
-            facet const & first_ = facets_.front();
-            for (points_iterator const vertex : first_.vertices_) {
-                size_type i = 0;
-                for (value_type const & x : *vertex) {
-                    ray_[i] += x;
-                    ++i;
-                }
-            }
-            ray_ /= value_type(dimension_);
-            ray_ -= inner_point_;
-            if (!(eps < std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero))) {
-                return false;
+        for (points_iterator const vertex : first_.vertices_) {
+            size_type i = 0;
+            for (value_type const & x : *vertex) {
+                ray_[i] += x;
+                ++i;
             }
         }
-        matrix g_(dimension_);
+        ray_ /= value_type(dimension_);
+        ray_ -= inner_point_;
+        if (!(eps < std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero))) {
+            return false;
+        }
+        matrix g_(dimension_); // storage d * (d + 1) for Gaussian elimination with partial pivoting
         for (row & row_ : g_) {
             row_.resize(dimension_ + 1);
         }
         row intersection_point_(zero, dimension_);
-#ifndef NDEBUG
-        std::valarray< size_type > permutations_(size_type(0), dimension_);
-#endif
         using std::abs;
         for (size_type f = 1; f < facets_count_; ++f) {
             facet const & facet_ = facets_[f];
-            value_type const denominator_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(facet_.normal_), zero);
-            if (!(eps < abs(denominator_))) {
-                return false;
+            value_type const numerator_ = facet_.distance(inner_point_);
+            if (!(numerator_ < -eps)) {
+                return false; // inner point is not on negative side of all facets, i.e. structure is not convex
             }
-            value_type const factor_ = facet_.distance(inner_point_) / denominator_;
-            if (!(factor_ < -eps)) {
+            value_type const denominator_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(facet_.normal_), zero);
+            if (!(eps < denominator_)) { // ray is parallel to the plane or directed away from the plane
                 continue;
             }
-            intersection_point_ = inner_point_ - ray_ * factor_;
+            intersection_point_ = inner_point_ - ray_ * (numerator_ / denominator_);
             assert(!(eps < abs(facet_.distance(intersection_point_))));
             for (size_type v = 0; v < dimension_; ++v) {
                 auto beg = std::cbegin(*facet_.vertices_[v]);
@@ -916,9 +884,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
             for (size_type r = 0; r < dimension_; ++r) {
                 g_[r][dimension_] = intersection_point_[r];
             }
-#ifndef NDEBUG
-            std::iota(std::begin(permutations_), std::end(permutations_), size_type(0));
-#endif
             // Gaussian elimination
             for (size_type i = 0; i < dimension_; ++i) {
                 row & gi_ = g_[i];
@@ -938,23 +903,19 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 assert(eps < max_); // not singular
                 if (pivot != i) {
                     gi_.swap(g_[pivot]);
-#ifndef NDEBUG
-                    std::swap(permutations_[i], permutations_[pivot]);
-#endif
                 }
                 value_type & gii_ = gi_[i];
                 for (size_type j = i + 1; j < dimension_; ++j) {
                     row & gj_ = g_[j];
                     value_type & gji_ = gj_[i];
                     gji_ /= gii_;
-                    for (size_type k = i + 1; k <= dimension_; ++k) { // gj_[dimension_] -= gji_ * gi_[dimension_]; inclusive
+                    for (size_type k = i + 1; k <= dimension_; ++k) {
                         gj_[k] -= gji_ * gi_[k];
                     }
                     gji_ = zero;
                 }
             } // g_ is upper triangular now
             bool in_range_ = true;
-            value_type sum_ = zero;
             {
                 size_type i = dimension_;
                 while (0 < i) {
@@ -965,36 +926,14 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
                     xi_ /= gi_[i];
-                    if (xi_ < -eps) {
-                        in_range_ = false;
+                    if ((xi_ < -eps) || (one + eps < xi_)) {
+                        in_range_ = false; // barycentric coordinate not lies in [0;1] range => miss
+                        break;
                     }
-                    sum_ += xi_;
                 }
             }
-#ifndef NDEBUG
-            for (size_type v = 0; v < dimension_; ++v) {
-                auto beg = std::cbegin(*facet_.vertices_[v]);
-                for (size_type r = 0; r < dimension_; ++r) {
-                    g_[r][v] = *beg;
-                    ++beg;
-                }
-            }
-            row resulting_point_(zero, dimension_);
-            for (size_type r = 0; r < dimension_; ++r) {
-                row & gr_ = g_[r];
-                value_type & x_ = resulting_point_[r];
-                x_ = zero;
-                for (size_type k = 0; k < dimension_; ++k) {
-                    x_ += gr_[k] * g_[k][dimension_];
-                }
-            }
-            resulting_point_ -= intersection_point_;
-            resulting_point_ *= resulting_point_;
-            using std::sqrt;
-            std::cerr << std::setprecision(10) << sqrt(resulting_point_.sum()) << "\t\t\t" << sum_ << std::endl;
-#endif
-            if (in_range_ && !(eps < abs(sum_ - one))) {
-                return false;
+            if (in_range_) {
+                return false; // hit
             }
         }
         return true;

@@ -21,11 +21,8 @@ main(int argc, char * argv[])
 {
     using size_type = std::size_t;
 
-    std::ofstream ofs_;
-    ofs_.open("/tmp/log.log");
-
-    std::ostream & out_ = ofs_;//std::cout;//
-    std::ostream & err_ = ofs_;//std::cerr;//
+    std::ostream & out_ = std::cout;
+    std::ostream & err_ = std::cerr;
 
     std::ifstream ifs_;
     if (!(argc < 2)) {
