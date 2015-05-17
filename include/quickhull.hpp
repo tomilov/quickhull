@@ -34,6 +34,7 @@
 #include <utility>
 #include <numeric>
 #include <limits>
+#include <functional>
 
 #include <cmath>
 #include <cassert>
@@ -95,36 +96,55 @@ struct quick_hull
 
         void
         init(point_array && _vertices,
+             size_type const _against,
              size_type const _neighbour)
         {
             vertices_ = std::move(_vertices);
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wshadow"
-            size_type const dimension_ = vertices_.size();
-#pragma clang diagnostic pop
-            neighbours_.reserve(dimension_);
-            neighbours_.push_back(_neighbour);
-            normal_.resize(dimension_);
+            size_type const d_ = vertices_.size();
+            assert(neighbours_.size() == d_);
+            neighbours_[_against] = _neighbour;
+            normal_.resize(d_);
         }
 
         facet(point_array && _vertices,
+              size_type const _against,
               size_type const _neighbour)
+            : vertices_(std::move(_vertices))
+            , neighbours_(vertices_.size())
+            , normal_(vertices_.size())
         {
-            init(std::move(_vertices), _neighbour);
+            neighbours_[_against] = _neighbour;
         }
 
-        facet(typename point_array::const_iterator _first,
-              typename point_array::const_iterator _middle,
-              typename point_array::const_iterator _last)
-            : vertices_(_first, std::prev(_middle))
+        facet(size_type const _dimension,
+              point_array const & _basis,
+              size_type const _position)
         {
-            vertices_.insert(std::cend(vertices_), _middle, _last);
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wshadow"
-            size_type const dimension_ = vertices_.size();
-#pragma clang diagnostic pop
-            neighbours_.reserve(dimension_);
-            normal_.resize(dimension_);
+            assert(!_basis.empty());
+            neighbours_.reserve(_dimension);
+            if ((_position % 2) == 0) {
+                auto const end = std::cend(_basis);
+                auto const mid = end - _position;
+                vertices_.assign(std::cbegin(_basis), std::prev(mid));
+                vertices_.insert(std::cbegin(vertices_), mid, end);
+                for (size_type neighbour = 0; neighbour <= _dimension; ++neighbour) {
+                    if (neighbour != _position) {
+                        neighbours_.push_back(_dimension - neighbour);
+                    }
+                }
+            } else {
+                auto const beg = std::crbegin(_basis);
+                auto const mid = beg + _position;
+                vertices_.assign(beg, std::prev(mid));
+                vertices_.insert(std::cbegin(vertices_), mid, std::crend(_basis));
+                for (size_type neighbour = 0; neighbour <= _dimension; ++neighbour) {
+                    if (neighbour != _dimension - _position) {
+                        neighbours_.push_back(neighbour);
+                    }
+                }
+            }
+            assert(vertices_.size() == _dimension);
+            normal_.resize(_dimension);
         }
 
         value_type
@@ -400,33 +420,24 @@ private :
         return true;
     }
 
-    ordered ordered_; // ordered, but not oriented vertices of facets
     std::set< size_type, std::greater< size_type > > removed_facets_;
 
     size_type
-    add_facet(point_array && _vertices, size_type const _oth_facet)
+    add_facet(point_array && _vertices, size_type const _against, size_type const _oth_facet)
     {
-        assert(ordered_.size() == facets_.size());
         if (removed_facets_.empty()) {
             size_type const f = facets_.size();
-            facets_.emplace_back(std::move(_vertices), _oth_facet);
+            facets_.emplace_back(std::move(_vertices), _against, _oth_facet);
             facet & facet_ = facets_.back();
             set_hyperplane_equation(facet_);
-            ordered_.emplace_back();
-            point_array & ordered_vertices_ = ordered_.back();
-            ordered_vertices_ = facet_.vertices_;
-            std::sort(std::begin(ordered_vertices_), std::end(ordered_vertices_));
             return f;
         } else {
             auto const rend = std::prev(std::cend(removed_facets_));
             size_type const f = *rend;
             removed_facets_.erase(rend);
             facet & facet_ = facets_[f];
-            facet_.init(std::move(_vertices), _oth_facet);
+            facet_.init(std::move(_vertices), _against, _oth_facet);
             set_hyperplane_equation(facet_);
-            point_array & ordered_vertices_ = ordered_[f];
-            ordered_vertices_ = facet_.vertices_;
-            std::sort(std::begin(ordered_vertices_), std::end(ordered_vertices_));
             return f;
         }
     }
@@ -542,13 +553,12 @@ private :
     void
     replace_neighbour(size_type const _facet, size_type const _from, size_type const _to)
     {
-        if (_from == _to) {
-            return;
-        }
-        for (size_type & neighbour : facets_[_facet].neighbours_) {
-            if (neighbour == _from) {
-                neighbour = _to;
-                return;
+        if (_from != _to) {
+            for (size_type & neighbour : facets_[_facet].neighbours_) {
+                if (neighbour == _from) {
+                    neighbour = _to;
+                    return;
+                }
             }
         }
     }
@@ -558,64 +568,49 @@ private :
     struct ridge
     {
 
-        point_array const & ordered_;
-        size_type const facet_;
-        size_type const excluded_vertex_;
+        facet & facet_;
+        size_type const f_;
+        size_type const against_;
 
         bool
-        operator < (ridge const & _other) const
+        operator == (ridge const & _rhs) const noexcept
         {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wshadow"
-            size_type const dimension_ = ordered_.size();
-#pragma clang diagnostic pop
-            size_type i = 0;
-            size_type j = 0;
-            for (;;) {
-                if (i == excluded_vertex_) {
-                    ++i;
-                }
-                if (j == _other.excluded_vertex_) {
-                    ++j;
-                }
-                if (i == dimension_) {
-                    assert(j == dimension_);
-                    break;
-                }
-                if (j == dimension_) {
-                    assert(i == dimension_);
-                    break;
-                }
-                points_iterator const lhs_ = ordered_[i];
-                points_iterator const rhs_ = _other.ordered_[j];
-                if (lhs_ < rhs_) {
-                    return true;
-                } else if (rhs_ < lhs_) {
-                    break;
-                } else { // are equivalent
-                    ++i;
-                    ++j;
-                }
-            }
-            return false;
+            // return (f_ == _rhs.f_) && (against_ == _rhs.against_); // wrong // TODO: caching of ordered_ version of facet_.vertices_
         }
 
     };
 
-    std::set< ridge > unique_ridges_;
+    struct ridge_hash
+    {
+
+        points_iterator beg_;
+
+        size_type
+        operator () (ridge const & _ridge) const noexcept
+        {
+            size_type hash_ = 0;
+            for (points_iterator const & point_ : _ridge.facet_.vertices_) {
+                hash_ ^= std::hash< typename points_iterator::difference_type >{}(point_ - beg_);
+            }
+            return hash_;
+        }
+
+    };
+
+    ridge_hash ridge_hash_;
+    std::unordered_set< ridge, ridge_hash > unique_ridges_{0, ridge_hash_};
 
     void
-    find_adjacent_facets(size_type const _facet, points_iterator const _apex)
+    find_adjacent_facets(size_type const _facet, size_type const _against)
     {
-        point_array const & ridge_ = ordered_[_facet];
         facet & facet_ = facets_[_facet];
-        for (size_type i = 0; i < dimension_; ++i) {
-            if (ridge_[i] != _apex) {
-                auto position = unique_ridges_.insert({ridge_, _facet, i});
+        for (size_type against_ = 0; against_ < dimension_; ++against_) {
+            if (against_ != _against) { // neighbouring facet against apex is known atm
+                auto position = unique_ridges_.insert({facet_, _facet, against_});
                 if (!position.second) {
-                    size_type const neighbour = position.first->facet_;
-                    facets_[neighbour].neighbours_.push_back(_facet);
-                    facet_.neighbours_.push_back(neighbour);
+                    ridge const & ridge_ = *position.first;
+                    ridge_.facet_.neighbours_[ridge_.against_] = _facet;
+                    facet_.neighbours_[against_] = ridge_.f_;
                     unique_ridges_.erase(position.first);
                 }
             }
@@ -681,46 +676,29 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
         }
         assert(basis_.size() == dimension_ + 1); // simplex
+        ridge_hash_.beg_ = _beg;
         // simplex construction
-        bool inward_ = (zero < hypervolume(basis_)); // is top oriented?
-        auto const vbeg = std::cbegin(basis_);
-        auto const vend = std::cend(basis_);
-        for (auto exclusive = vend; exclusive != vbeg; --exclusive) {
-            size_type const newfacet = facets_.size();
-            facets_.emplace_back(vbeg, exclusive, vend);
-            facet & facet_ = facets_.back();
-            inward_ = !inward_;
-            if (inward_) {
-                std::swap(facet_.vertices_.front(), // not works for dimension_ == 1
-                          facet_.vertices_.back());
-            }
-            set_hyperplane_equation(facet_);
-            ordered_.emplace_back();
-            point_array & ordered_vertices_ = ordered_.back();
-            ordered_vertices_ = facet_.vertices_;
-            std::sort(std::begin(ordered_vertices_), std::end(ordered_vertices_));
-            rank(partition(facet_, internal_set_), newfacet);
+        if (zero < hypervolume(basis_)) {
+            // last point is above the facet formed by first dimension_ points
+            std::swap(basis_.front(), basis_.back());
         }
-        for (size_type i = 0; i <= dimension_; ++i) { // adjacency
-            facet_array & neighbours_ = facets_[i].neighbours_;
-            for (size_type j = 0; j <= dimension_; ++j) {
-                if (i != j) {
-                    neighbours_.push_back(j);
-                }
-            }
+        for (size_type newfacet = 0; newfacet <= dimension_; ++newfacet) {
+            facets_.emplace_back(dimension_, basis_, newfacet);
+            facet & newfacet_ = facets_.back();
+            set_hyperplane_equation(newfacet_);
+            rank(partition(newfacet_, internal_set_), newfacet);
         }
         return basis_;
     }
 
-    ordered
+    void
     create_convex_hull()
     {
         assert(facets_.size() == dimension_ + 1);
-        assert(ordered_.size() == dimension_ + 1);
         assert(removed_facets_.empty());
         point_list outside_;
         point_array vertices_;
-        facet_array neighbours_;
+        facet_array neighbours_(dimension_);
         point_array ridge_; // horizon ridge + furthest point = new facet
         facet_array newfacets_;
         while (!ranking_.empty()) {
@@ -735,37 +713,29 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 facet & facet_ = facets_[not_bth_facet];
                 outside_.splice(std::cend(outside_), std::move(facet_.outside_));
                 facet_.vertices_.clear();
-                facet_.neighbours_.clear();
+                // facet_.neighbours_ contains unrelated data now
                 facet_.coplanar_.clear();
                 unrank_and_remove(not_bth_facet);
             }
             assert(newfacets_.empty());
+            //unique_ridges_.rehash((dimension_ - 1) * bth_facets_.size());
             for (size_type const bth_facet : bth_facets_) {
-                facet & facet_ = facets_[bth_facet];
-                outside_.splice(std::cend(outside_), std::move(facet_.outside_));
-                vertices_ = std::move(facet_.vertices_);
-                neighbours_ = std::move(facet_.neighbours_);
-                facet_.coplanar_.clear();
+                facet & bth_facet_ = facets_[bth_facet];
+                outside_.splice(std::cend(outside_), std::move(bth_facet_.outside_));
+                vertices_ = std::move(bth_facet_.vertices_);
+                neighbours_.swap(bth_facet_.neighbours_); // facet_.neighbours_ contains unrelated data now
+                bth_facet_.coplanar_.clear();
                 unrank_and_remove(bth_facet);
-                for (size_type const neighbour : neighbours_) {
+                for (size_type against = 0; against < dimension_; ++against) {
+                    size_type const neighbour = neighbours_[against];
                     if (is_invisible(neighbour)) { // is over-the-horizon facet?
-                        {
-                            point_array const & horizon_ = ordered_[neighbour];
-                            assert(ridge_.empty());
-                            ridge_.reserve(dimension_);
-                            for (points_iterator const vertex : vertices_) { // facets intersection with keeping of points order as it is in visible facet
-                                if (std::binary_search(std::cbegin(horizon_), std::cend(horizon_), vertex)) {
-                                    ridge_.push_back(vertex);
-                                } else {
-                                    ridge_.push_back(apex);
-                                }
-                            }
-                            assert(ridge_.size() == dimension_); // facet
-                        }
-                        size_type const newfacet = add_facet(std::move(ridge_), neighbour);
+                        assert(ridge_.empty());
+                        ridge_ = vertices_;
+                        ridge_[against] = apex;
+                        size_type const newfacet = add_facet(std::move(ridge_), against, neighbour);
                         newfacets_.push_back(newfacet);
                         replace_neighbour(neighbour, bth_facet, newfacet);
-                        find_adjacent_facets(newfacet, apex);
+                        find_adjacent_facets(newfacet, against);
                     }
                 }
             }
@@ -781,24 +751,19 @@ public : // largest possible simplex heuristic, convex hull algorithm
         assert(outside_.empty());
         { // compactify
             size_type source = facets_.size();
-            assert(ordered_.size() == source);
             for (size_type const destination : removed_facets_) {
                 if (destination != --source) {
                     facet & facet_ = facets_[destination];
                     facet_ = std::move(facets_.back());
-                    ordered_[destination] = std::move(ordered_.back());
                     for (size_type const neighbour : facet_.neighbours_) {
                         replace_neighbour(neighbour, source, destination);
                     }
                 }
                 facets_.pop_back();
-                ordered_.pop_back();
             }
             facets_.shrink_to_fit();
-            ordered_.shrink_to_fit();
             removed_facets_.clear();
         }
-        return std::move(ordered_);
     }
 
     bool
@@ -900,7 +865,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         }
                     }
                 }
-                assert(eps < max_); // not singular
                 if (pivot != i) {
                     gi_.swap(g_[pivot]);
                 }
@@ -926,7 +890,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
                     xi_ /= gi_[i];
-                    if ((xi_ < -eps) || (one + eps < xi_)) {
+                    if ((xi_ < -eps) || (one < xi_)) {
                         in_range_ = false; // barycentric coordinate not lies in [0;1] range => miss
                         break;
                     }
