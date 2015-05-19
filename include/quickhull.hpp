@@ -131,7 +131,7 @@ struct quick_hull
             neighbours_.reserve(_dimension);
             if ((_vertex % 2) == 0) {
                 auto const end = std::cend(_simplex);
-                auto const mid = end - _vertex;
+                auto const mid = std::prev(end, _vertex);
                 vertices_.assign(std::cbegin(_simplex), std::prev(mid));
                 vertices_.insert(std::cbegin(vertices_), mid, end);
                 for (size_type neighbour = 0; neighbour <= _dimension; ++neighbour) {
@@ -141,7 +141,7 @@ struct quick_hull
                 }
             } else {
                 auto const beg = std::crbegin(_simplex);
-                auto const mid = beg + _vertex;
+                auto const mid = std::next(beg, _vertex);
                 vertices_.assign(beg, mid);
                 vertices_.insert(std::cbegin(vertices_), std::next(mid), std::crend(_simplex));
                 for (size_type neighbour = 0; neighbour <= _dimension; ++neighbour) {
@@ -539,8 +539,10 @@ private :
                 }
             }
             if (bth_) {
+                std::cerr << "add to bth " << _facet << std::endl;
                 bth_facets_.insert(_facet);
             } else {
+                std::cerr << "add to nbth " << _facet << std::endl;
                 not_bth_facets_.insert(_facet);
             }
             return false;
@@ -550,7 +552,7 @@ private :
     }
 
     void
-    clear_bth()
+    clear_visibles()
     {
         visited_.clear();
         bth_facets_.clear();
@@ -578,6 +580,7 @@ private :
         facet & facet_;
         size_type const f_;
         size_type const against_;
+        size_type const hash_;
 
         bool
         operator == (ridge const & _rhs) const noexcept
@@ -594,7 +597,7 @@ private :
                     for (point_iterator const & r : _rhs.facet_.vertices_) {
                         if (r != rskip) {
                             if (l == r) {
-                                found_ = true;
+                                found_ = true; // O(n^2) expensive
                                 break;
                             }
                         }
@@ -609,23 +612,15 @@ private :
 
     };
 
+    point_iterator beg_;
+
     struct ridge_hash
     {
-
-        point_iterator beg_;
 
         size_type
         operator () (ridge const & _ridge) const noexcept
         {
-            size_type ridge_hash_ = 0;
-            std::hash< typename point_iterator::difference_type > point_hash_;
-            point_iterator const & against_ = _ridge.facet_.vertices_[_ridge.against_];
-            for (point_iterator const & p : _ridge.facet_.vertices_) {
-                if (p != against_) {
-                    ridge_hash_ ^= point_hash_(p - beg_);
-                }
-            }
-            return ridge_hash_;
+            return _ridge.hash_;
         }
 
     };
@@ -637,9 +632,16 @@ private :
     find_adjacent_facets(size_type const _f, size_type const _apex)
     {
         facet & facet_ = facets_[_f];
+        std::hash< typename point_iterator::difference_type > point_hash_;
+        size_type ridge_hash_ = 0;
+        for (size_type v = 0; v < dimension_; ++v) {
+            if (v != _apex) {
+                ridge_hash_ ^= point_hash_(facet_.vertices_[v] - beg_);
+            }
+        }
         for (size_type against_ = 0; against_ < dimension_; ++against_) {
             if (against_ != _apex) { // neighbouring facet against _apex is known atm
-                auto position = unique_ridges_.insert({facet_, _f, against_});
+                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_(facet_.vertices_[against_] - beg_))});
                 if (!position.second) {
                     ridge const & ridge_ = *position.first;
                     ridge_.facet_.neighbours_[ridge_.against_] = _f;
@@ -709,7 +711,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
         }
         assert(basis_.size() == dimension_ + 1); // simplex
-        ridge_hash_.beg_ = _beg;
+        beg_ = _beg;
         // simplex construction
         if (hypervolume(basis_) < zero) {
             std::swap(basis_.front(), basis_.back());
@@ -722,7 +724,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             {
                 std::cerr << newfacet << " vertices: " << std::endl;
                 for (auto const & pi_ : newfacet_.vertices_) {
-                    std::cerr << std::distance(ridge_hash_.beg_, pi_) << ' ';
+                    std::cerr << std::distance(beg_, pi_) << ' ';
                 }
                 std::cerr << "\n nighbours: ";
                 for (size_type const n : newfacet_.neighbours_) {
@@ -754,7 +756,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
             assert(!best_facet_outsides_.empty());
             point_iterator const apex = best_facet_outsides_.front();
             best_facet_outsides_.pop_front();
-            process_visibles(best_facet, *apex);
+            if (process_visibles(best_facet, *apex)) {
+                assert(false);
+            }
             assert(outside_.empty());
             for (size_type const not_bth_facet : not_bth_facets_) {
                 facet & facet_ = facets_[not_bth_facet];
@@ -768,12 +772,12 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 facet & facet_ = facets_[bth_facet];
                 outside_.splice(std::cend(outside_), std::move(facet_.outside_));
                 facet_.coplanar_.clear();
-                neighbours_.swap(facet_.neighbours_); // facet_.neighbours_ contains unrelated data now
+                neighbours_.swap(facet_.neighbours_);
                 vertices_ = std::move(facet_.vertices_);
                 unrank(bth_facet);
                 for (size_type against = 0; against < dimension_; ++against) {
                     size_type const neighbour = neighbours_[against];
-                    if (is_invisible(neighbour)) { // is over-the-horizon facet?
+                    if (is_invisible(neighbour)) { // is it over-the-horizon facet?
                         size_type const newfacet = add_facet(vertices_, against, apex, neighbour);
                         newfacets_.push_back(newfacet);
                         replace_neighbour(neighbour, bth_facet, newfacet);
@@ -781,8 +785,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
                     }
                 }
             }
+            std::cerr << unique_ridges_.size() << std::endl;
             assert(unique_ridges_.empty());
-            clear_bth();
+            clear_visibles();
             for (size_type const newfacet : newfacets_) {
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
