@@ -233,8 +233,9 @@ private :
         }
     }
 
+    // based on LUP decomposition (complexity is (n^3 / 3 + n^2 / 2 - 5 * n / 6) vs (2 * n^3 / 3 + n^2 + n / 3 - 2) for QR decomposition via Householder reflections) http://math.stackexchange.com/a/93508/54348
     value_type
-    det(matrix & _matrix, size_type const _dimension) // based on LUP decomposition (complexity is 2 * n^3 / 3 + O(n^2) vs 4 * n^3 / 3 + O(n^2) for QR decomposition via Householder reflections)
+    det(matrix & _matrix, size_type const _dimension)
     { // produces lower unit triangular matrix and upper triangular
         assert(0 < _dimension);
         value_type det_ = one;
