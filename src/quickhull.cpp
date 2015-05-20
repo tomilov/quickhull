@@ -131,11 +131,11 @@ main(int argc, char * argv[])
             quick_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
             out_ << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
-//            if (!quick_hull_.check(ordered_)) {
-//                out_ << std::flush;
-//                err_ << "resulting structure is not valid convex polytope" << std::endl;
-//                return EXIT_FAILURE;
-//            }
+            if (!quick_hull_.check()) {
+                out_ << std::flush;
+                err_ << "resulting structure is not valid convex polytope" << std::endl;
+                return EXIT_FAILURE;
+            }
         }
     }
     auto const & facets_ = quick_hull_.facets_;
