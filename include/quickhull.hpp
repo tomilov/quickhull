@@ -634,12 +634,12 @@ private :
         size_type ridge_hash_ = 0;
         for (size_type v = 0; v < dimension_; ++v) {
             if (v != _apex) {
-                ridge_hash_ ^= point_hash_(facet_.vertices_[v] - beg_);
+                ridge_hash_ ^= (point_hash_(facet_.vertices_[v] - beg_) * 123);
             }
         }
         for (size_type against_ = 0; against_ < dimension_; ++against_) {
             if (against_ != _apex) { // neighbouring facet against _apex is known atm
-                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_(facet_.vertices_[against_] - beg_))});
+                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ (point_hash_(facet_.vertices_[against_] - beg_) * 123))});
                 if (!position.second) {
                     ridge const & ridge_ = *position.first;
                     ridge_.facet_.neighbours_[ridge_.against_] = _f;
