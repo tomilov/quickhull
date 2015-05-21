@@ -35,6 +35,7 @@
 #include <numeric>
 #include <limits>
 #include <functional>
+#include <ext/hash_map>
 #ifdef _DEBUG
 #include <iostream>
 #endif
@@ -65,7 +66,7 @@ struct quick_hull
         , shadow_matrix_(dimension_)
         , minor_(dimension_)
     {
-        assert(0 < dimension_);
+        assert(1 < dimension_);
         assert(!(eps < zero));
         for (size_type r = 0; r < dimension_; ++r) {
             matrix_[r].resize(dimension_);
@@ -89,8 +90,10 @@ struct quick_hull
 
         using normal = std::valarray< value_type >;
 
+        // !each neighbour lies against corresponding vertex and vice versa
         point_array vertices_; // dimension_ points (oriented)
-        facet_array neighbours_; // neighbouring facets
+        facet_array neighbours_; // dimension_ neighbouring facets
+
         point_list outside_; // if empty, then is convex hull's facet, else the first point (i.e. outside_.front()) is the furthest point from this facet
         point_deque coplanar_; // coplanar points, for resulting convex hull it is guaranted that they lies within the facet or on a facet's ridge (in later case these points can be non-unique)
 
@@ -172,8 +175,6 @@ struct quick_hull
     {
         return std::inner_product(std::cbegin(_this.normal_), std::cend(_this.normal_), std::cbegin(_other.normal_), zero);
     }
-
-    using ordered = std::deque< point_array >;
 
 private :
 
@@ -631,16 +632,19 @@ private :
     find_adjacent_facets(size_type const _f, size_type const _apex)
     {
         facet & facet_ = facets_[_f];
-        std::hash< difference_type > point_hash_;
+        struct scalar { difference_type _1, _2; };
+        std::__scalar_hash< scalar > point_hash_;
         size_type ridge_hash_ = 0;
         for (size_type v = 0; v < dimension_; ++v) {
             if (v != _apex) {
-                ridge_hash_ ^= (point_hash_(facet_.vertices_[v] - beg_) * 123);
+                difference_type _0 = facet_.vertices_[v] - beg_;
+                ridge_hash_ ^= (point_hash_({_0, _0}));
             }
         }
         for (size_type against_ = 0; against_ < dimension_; ++against_) {
             if (against_ != _apex) { // neighbouring facet against _apex is known atm
-                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ (point_hash_(facet_.vertices_[against_] - beg_) * 123))});
+                difference_type _0 = facet_.vertices_[against_] - beg_;
+                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_({_0, _0}))});
                 if (!position.second) {
                     ridge const & ridge_ = *position.first;
                     ridge_.facet_.neighbours_[ridge_.against_] = _f;
