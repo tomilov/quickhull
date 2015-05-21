@@ -35,11 +35,11 @@
 #include <numeric>
 #include <limits>
 #include <functional>
-#include <ext/hash_map>
 #ifdef _DEBUG
 #include <iostream>
 #endif
 
+#include <cstdint>
 #include <cmath>
 #include <cassert>
 
@@ -632,19 +632,16 @@ private :
     find_adjacent_facets(size_type const _f, size_type const _apex)
     {
         facet & facet_ = facets_[_f];
-        struct scalar { difference_type _1, _2; };
-        std::__scalar_hash< scalar > point_hash_;
+        std::hash< difference_type > point_hash_;
         size_type ridge_hash_ = 0;
         for (size_type v = 0; v < dimension_; ++v) {
             if (v != _apex) {
-                difference_type _0 = facet_.vertices_[v] - beg_;
-                ridge_hash_ ^= (point_hash_({_0, _0}));
+                ridge_hash_ ^= point_hash_(facet_.vertices_[v] - beg_);
             }
         }
         for (size_type against_ = 0; against_ < dimension_; ++against_) {
             if (against_ != _apex) { // neighbouring facet against _apex is known atm
-                difference_type _0 = facet_.vertices_[against_] - beg_;
-                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_({_0, _0}))});
+                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_(facet_.vertices_[against_] - beg_))});
                 if (!position.second) {
                     ridge const & ridge_ = *position.first;
                     ridge_.facet_.neighbours_[ridge_.against_] = _f;
@@ -806,20 +803,18 @@ public : // largest possible simplex heuristic, convex hull algorithm
         // check whether the inner point is inside WRT each hull facet
         std::multiset< point_iterator > surface_points_;
         size_type const facets_count_ = facets_.size();
-        {
-            for (size_type f = 0; f < facets_count_; ++f) {
-                facet const & facet_ = facets_[f];
-                point_array const & vertices_ = facet_.vertices_;
-                surface_points_.insert(std::cbegin(vertices_), std::cend(vertices_));
-                for (size_type const neighbour : facet_.neighbours_) {
-                    facet const & neighbour_ = facets_[neighbour];
-                    for (size_type v = 0; v < dimension_; ++v) {
-                        if (neighbour_.neighbours_[v] == f) {
-                            if (eps < facet_.distance(*neighbour_.vertices_[v])) {
-                                return false; // facet is not locally convex at all its ridges
-                            }
-                            break;
+        for (size_type f = 0; f < facets_count_; ++f) {
+            facet const & facet_ = facets_[f];
+            point_array const & vertices_ = facet_.vertices_;
+            surface_points_.insert(std::cbegin(vertices_), std::cend(vertices_));
+            for (size_type const neighbour : facet_.neighbours_) {
+                facet const & neighbour_ = facets_[neighbour];
+                for (size_type v = 0; v < dimension_; ++v) {
+                    if (neighbour_.neighbours_[v] == f) {
+                        if (eps < facet_.distance(*neighbour_.vertices_[v])) {
+                            return false; // facet is not locally convex at all its ridges
                         }
+                        break;
                     }
                 }
             }
@@ -930,7 +925,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
                     xi_ /= gi_[i];
-                    if ((xi_ < -eps) || (one < xi_)) {
+                    if ((xi_ < zero) || (one < xi_)) {
                         in_range_ = false; // barycentric coordinate not lies in [0;1] range => miss
                         break;
                     }
