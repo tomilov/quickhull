@@ -16,6 +16,12 @@
 #include <cstdio>
 #include <cassert>
 
+#ifdef __linux__
+#define RED(str) __extension__ "\e[1;31m" str "\e[0m"
+#else
+#define RED(str) str
+#endif
+
 int
 main(int argc, char * argv[])
 {
@@ -133,7 +139,7 @@ main(int argc, char * argv[])
             out_ << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
             if (!quick_hull_.check()) {
                 out_ << std::flush;
-                err_ << "resulting structure is not valid convex polytope" << std::endl;
+                err_ << RED("resulting structure is not valid convex polytope") << std::endl;
                 return EXIT_FAILURE;
             }
         }

@@ -588,9 +588,6 @@ private :
         bool
         operator == (ridge const & _rhs) const noexcept
         {
-            if (hash_ != _rhs.hash_) {
-                return false;
-            }
             point_iterator const & lskip = facet_.vertices_[against_];
             point_iterator const & rskip = _rhs.facet_.vertices_[_rhs.against_];
             for (point_iterator const & l : facet_.vertices_) {
@@ -625,23 +622,22 @@ private :
 
     };
 
-    point_iterator beg_;
     std::unordered_set< ridge, ridge_hash > unique_ridges_;
 
     void
-    find_adjacent_facets(size_type const _f, size_type const _apex)
+    find_adjacent_facets(size_type const _f, size_type const _skip, point_iterator const & _apex)
     {
         facet & facet_ = facets_[_f];
         std::hash< difference_type > point_hash_;
         size_type ridge_hash_ = 0;
         for (size_type v = 0; v < dimension_; ++v) {
-            if (v != _apex) {
-                ridge_hash_ ^= point_hash_(facet_.vertices_[v] - beg_);
+            if (v != _skip) {
+                ridge_hash_ ^= point_hash_(facet_.vertices_[v] - _apex);
             }
         }
         for (size_type against_ = 0; against_ < dimension_; ++against_) {
-            if (against_ != _apex) { // neighbouring facet against _apex is known atm
-                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_(facet_.vertices_[against_] - beg_))});
+            if (against_ != _skip) { // neighbouring facet against _apex is known atm
+                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_(facet_.vertices_[against_] - _apex))});
                 if (!position.second) {
                     ridge const & ridge_ = *position.first;
                     ridge_.facet_.neighbours_[ridge_.against_] = _f;
@@ -711,7 +707,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
         }
         assert(basis_.size() == dimension_ + 1); // simplex
-        beg_ = _beg; // save for the hash calculations to be possible
         // simplex construction
         if (hypervolume(basis_) < zero) {
             std::swap(basis_.front(), basis_.back());
@@ -765,7 +760,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         size_type const newfacet = add_facet(vertices_, against, apex, neighbour);
                         newfacets_.push_back(newfacet);
                         replace_neighbour(neighbour, bth_facet, newfacet);
-                        find_adjacent_facets(newfacet, against);
+                        find_adjacent_facets(newfacet, against, apex);
                     }
                 }
             }
@@ -801,12 +796,13 @@ public : // largest possible simplex heuristic, convex hull algorithm
     {
         // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig. Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
         // check whether the inner point is inside WRT each hull facet
-        std::multiset< point_iterator > surface_points_;
+        std::map< point_iterator, size_type > surface_points_;
         size_type const facets_count_ = facets_.size();
         for (size_type f = 0; f < facets_count_; ++f) {
             facet const & facet_ = facets_[f];
-            point_array const & vertices_ = facet_.vertices_;
-            surface_points_.insert(std::cbegin(vertices_), std::cend(vertices_));
+            for (point_iterator const & v : facet_.vertices_) {
+                ++surface_points_[v];
+            }
             for (size_type const neighbour : facet_.neighbours_) {
                 facet const & neighbour_ = facets_[neighbour];
                 for (size_type v = 0; v < dimension_; ++v) {
@@ -819,25 +815,20 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 }
             }
         }
+        assert(!surface_points_.empty());
         row inner_point_(zero, dimension_);
         {
-            size_type points_count_ = 0;
-            while (!surface_points_.empty()) {
-                auto const b = surface_points_.cbegin();
-                point_iterator const p = *b;
-                if (surface_points_.count(p) < dimension_) {
+            for (auto const & sp : surface_points_) {
+                if (sp.second < dimension_) {
                     return false;
-                } else {
-                    size_type i = 0;
-                    for (value_type const & x : *p) {
-                        inner_point_[i] += x;
-                        ++i;
-                    }
-                    surface_points_.erase(p);
-                    ++points_count_;
+                }
+                size_type i = 0;
+                for (value_type const & x : *sp.first) {
+                    inner_point_[i] += x;
+                    ++i;
                 }
             }
-            inner_point_ /= value_type(points_count_);
+            inner_point_ /= value_type(surface_points_.size());
         }
         facet const & first_ = facets_.front();
         if (!(first_.distance(inner_point_) < -eps)) {
