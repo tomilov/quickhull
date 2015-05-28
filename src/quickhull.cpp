@@ -140,7 +140,7 @@ main(int argc, char * argv[])
             if (!quick_hull_.check()) {
                 out_ << std::flush;
                 err_ << RED("resulting structure is not valid convex polytope") << std::endl;
-                return EXIT_FAILURE;
+                //return EXIT_FAILURE;
             }
         }
     }
