@@ -31,16 +31,16 @@ main(int argc, char * argv[])
     std::ostream & err_ = std::cerr;
 
     std::ifstream ifs_;
-    if (!(argc < 2)) {
+    if (argc == 2) {
         ifs_.open(argv[1]);
         if (!ifs_.is_open()) {
             out_ << std::flush;
-            err_ << "cannot open the file" << std::endl;
+            err_ << "cannot open file" << std::endl;
             return EXIT_FAILURE;
         }
     }
     std::istream & in_ = ifs_.is_open() ? ifs_ : std::cin;
-    out_ << "#read file: " << ((argc < 2) ? "stdin" : argv[1]) << '\n';
+    out_ << "#input file: " << ((argc < 2) ? "stdin" : argv[1]) << '\n';
     std::string line_;
     if (!std::getline(in_, line_)) {
         out_ << std::flush;
@@ -114,7 +114,8 @@ main(int argc, char * argv[])
     out_ << "#N = " << count_ << '\n';
     using quick_hull_type = quick_hull< typename points::const_iterator >;
     using std::sqrt;
-    quick_hull_type quick_hull_(dimension_, sqrt(std::numeric_limits< value_type >::epsilon()));
+    value_type const eps = sqrt(std::numeric_limits< value_type >::epsilon());
+    quick_hull_type quick_hull_(dimension_, eps);
     typename quick_hull_type::point_array initial_simplex_;
     {
         using std::chrono::duration_cast;
@@ -137,10 +138,10 @@ main(int argc, char * argv[])
             quick_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
             out_ << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
-            if (!quick_hull_.check()) {
+            if (!quick_hull_.check(eps + eps + eps)) {
                 out_ << std::flush;
                 err_ << RED("resulting structure is not valid convex polytope") << std::endl;
-                //return EXIT_FAILURE;
+                return EXIT_FAILURE;
             }
         }
     }

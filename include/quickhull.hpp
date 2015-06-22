@@ -504,7 +504,7 @@ private :
     }
 
     size_type
-    get_best_facet() const // select the facet with furthest (between all facets with non-empty outsides_ set) point
+    get_best_facet() const // select a facet with furthest (between all facets with non-empty outsides_ set) point
     {
         assert(ranking_meta_.size() == ranking_.size());
         return std::prev(std::cend(ranking_))->second;
@@ -596,7 +596,7 @@ private :
                     for (point_iterator const & r : _rhs.facet_.vertices_) {
                         if (r != rskip) {
                             if (l == r) {
-                                found_ = true; // O(n^2) expensive
+                                found_ = true; // O(d^2) expensive
                                 break;
                             }
                         }
@@ -746,7 +746,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 unrank(not_bth_facet);
             }
             assert(newfacets_.empty());
-            //unique_ridges_.rehash((dimension_ - 1) * bth_facets_.size());
+            //unique_ridges_.reserve((dimension_ - 1) * bth_facets_.size());
             for (size_type const bth_facet : bth_facets_) {
                 facet & facet_ = facets_[bth_facet];
                 outside_.splice(std::cend(outside_), std::move(facet_.outside_));
@@ -794,11 +794,17 @@ public : // largest possible simplex heuristic, convex hull algorithm
     bool
     check() const
     {
-        // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig. Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
-        // check whether the inner point is inside WRT each hull facet
+        return check(eps);
+    }
+
+    bool
+    check(value_type const & _eps) const
+    {
+        // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
+        // Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
         std::map< point_iterator, size_type > surface_points_;
         size_type const facets_count_ = facets_.size();
-        for (size_type f = 0; f < facets_count_; ++f) {
+        for (size_type f = 0; f < facets_count_; ++f) { // check whether the inner point is inside relative to each hull facet
             facet const & facet_ = facets_[f];
             for (point_iterator const & v : facet_.vertices_) {
                 ++surface_points_[v];
@@ -807,7 +813,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 facet const & neighbour_ = facets_[neighbour];
                 for (size_type v = 0; v < dimension_; ++v) {
                     if (neighbour_.neighbours_[v] == f) {
-                        if (eps < facet_.distance(*neighbour_.vertices_[v])) {
+                        if (_eps < facet_.distance(*neighbour_.vertices_[v])) {
                             return false; // facet is not locally convex at all its ridges
                         }
                         break;
@@ -831,7 +837,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             inner_point_ /= value_type(surface_points_.size());
         }
         facet const & first_ = facets_.front();
-        if (!(first_.distance(inner_point_) < -eps)) {
+        if (!(first_.distance(inner_point_) < -_eps)) {
             return false;
         }
         row ray_(zero, dimension_);
@@ -844,7 +850,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         ray_ /= value_type(dimension_);
         ray_ -= inner_point_;
-        if (!(eps < std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero))) {
+        if (!(_eps < std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero))) {
             return false;
         }
         matrix g_(dimension_); // storage d * (d + 1) for Gaussian elimination with partial pivoting
@@ -852,19 +858,19 @@ public : // largest possible simplex heuristic, convex hull algorithm
             row_.resize(dimension_ + 1);
         }
         row intersection_point_(zero, dimension_);
-        using std::abs;
         for (size_type f = 1; f < facets_count_; ++f) {
+            using std::abs;
             facet const & facet_ = facets_[f];
             value_type const numerator_ = facet_.distance(inner_point_);
-            if (!(numerator_ < -eps)) {
+            if (!(numerator_ < -_eps)) {
                 return false; // inner point is not on negative side of all facets, i.e. structure is not convex
             }
             value_type const denominator_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(facet_.normal_), zero);
-            if (!(eps < denominator_)) { // ray is parallel to the plane or directed away from the plane
+            if (!(_eps < denominator_)) { // ray is parallel to the plane or directed away from the plane
                 continue;
             }
             intersection_point_ = inner_point_ - ray_ * (numerator_ / denominator_);
-            assert(!(eps < abs(facet_.distance(intersection_point_))));
+            assert(!(_eps < abs(facet_.distance(intersection_point_))));
             for (size_type v = 0; v < dimension_; ++v) {
                 auto beg = std::cbegin(*facet_.vertices_[v]);
                 for (size_type r = 0; r < dimension_; ++r) {
