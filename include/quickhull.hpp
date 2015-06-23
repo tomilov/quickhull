@@ -802,13 +802,10 @@ public : // largest possible simplex heuristic, convex hull algorithm
     {
         // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
         // Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
-        std::map< point_iterator, size_type > surface_points_;
+        std::set< point_iterator > surface_points_;
         size_type const facets_count_ = facets_.size();
         for (size_type f = 0; f < facets_count_; ++f) { // check whether the inner point is inside relative to each hull facet
             facet const & facet_ = facets_[f];
-            for (point_iterator const & v : facet_.vertices_) {
-                ++surface_points_[v];
-            }
             for (size_type const neighbour : facet_.neighbours_) {
                 facet const & neighbour_ = facets_[neighbour];
                 for (size_type v = 0; v < dimension_; ++v) {
@@ -824,12 +821,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
         assert(!surface_points_.empty());
         row inner_point_(zero, dimension_);
         {
-            for (auto const & sp : surface_points_) {
-                if (sp.second < dimension_) {
-                    return false;
-                }
+            for (point_iterator const & point_ : surface_points_) {
                 size_type i = 0;
-                for (value_type const & x : *sp.first) {
+                for (value_type const & x : *point_) {
                     inner_point_[i] += x;
                     ++i;
                 }
@@ -884,7 +878,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
             // Gaussian elimination
             for (size_type i = 0; i < dimension_; ++i) {
                 row & gi_ = g_[i];
-                using std::abs;
                 value_type max_ = abs(gi_[i]);
                 size_type pivot = i;
                 {
@@ -896,6 +889,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
                             pivot = p;
                         }
                     }
+                }
+                if (max_ < _eps) {
+                    continue; // point is origin => does not make a contribution
                 }
                 if (pivot != i) {
                     gi_.swap(g_[pivot]);
@@ -921,9 +917,13 @@ public : // largest possible simplex heuristic, convex hull algorithm
                     for (size_type j = i + 1; j < dimension_; ++j) {
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
-                    xi_ /= gi_[i];
+                    value_type const & gii_ = gi_[i];
+                    if (abs(gii_) < _eps) {
+                        continue; // point is origin
+                    }
+                    xi_ /= gii_;
                     if ((xi_ < zero) || (one < xi_)) {
-                        in_range_ = false; // barycentric coordinate not lies in [0;1] range => miss
+                        in_range_ = false; // barycentric coordinate does not lie in [0;1] interval => miss
                         break;
                     }
                 }

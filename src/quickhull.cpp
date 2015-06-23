@@ -70,7 +70,7 @@ main(int argc, char * argv[])
         err_ << "io: count line" << std::endl;
         return EXIT_FAILURE;
     }
-    using value_type = float;
+    using value_type = double;
     using point = std::valarray< value_type >;
     using points = std::vector< point >;
     size_type count_ = 0;
@@ -135,10 +135,10 @@ main(int argc, char * argv[])
         }
         {
             steady_clock::time_point const start = steady_clock::now();
-            quick_hull_.create_convex_hull();
+            //quick_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
             out_ << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
-            if (!quick_hull_.check(eps + eps + eps)) {
+            if (!quick_hull_.check(eps + eps)) {
                 out_ << std::flush;
                 err_ << RED("resulting structure is not valid convex polytope") << std::endl;
                 return EXIT_FAILURE;
@@ -167,9 +167,12 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     }
-    gnuplot_ << " '-' with points notitle pointtype 4 pointsize 1.5 linetype 1, '-' with points notitle, '-' with labels offset character 0, character 1 notitle";
+    gnuplot_ << " '-' with points notitle pointtype 4 pointsize 1.5 linetype 1"
+                ", '-' with points notitle"
+                ", '-' with labels offset character 0, character 1 notitle";
     for (size_type i = 0; i < facets_count_; ++i) {
-        gnuplot_ << ", '-' with lines notitle, '-' with points notitle pointtype 6 pointsize 1.5 linetype 4";
+        gnuplot_ << ", '-' with lines notitle"
+                    ", '-' with points notitle pointtype 6 pointsize 1.5 linetype 4";
     }
     gnuplot_ << ";\n";
     for (auto const p : initial_simplex_) {
@@ -205,6 +208,7 @@ main(int argc, char * argv[])
             }
             gnuplot_ << '\n';
         }
+        std::cerr << std::endl;
         point const & first_vertex_ = *vertices_.front();
         for (value_type const & coordinate_ : first_vertex_) {
             gnuplot_ << coordinate_ << ' ';
