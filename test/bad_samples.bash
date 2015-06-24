@@ -4,6 +4,8 @@
 #rbox D3 5 s t30165
 #rbox D3 5 s t40466
 
+PROJECT_ROOT=$(dirname $0)/..
+
 pushd bin
 pids=()
 let delta=10000
@@ -14,7 +16,7 @@ do
     (
         for j in $(seq $lower $upper)
         do
-            rbox D3 10 s t$j | /tmp/quickhull
+            rbox D3 10 s t$j | $PROJECT_ROOT/bin/quickhull
         done
     ) &> test_$i.txt &
     pids+=("$!")

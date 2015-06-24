@@ -5,7 +5,7 @@ CONFIG *= exceptions rtti warn_on optimize_full
 QMAKE_CXXFLAGS_CXX11 = -std=gnu++1z
 CONFIG *= c++11
 
-linux:DESTDIR = /tmp/
+DESTDIR = bin/
 linux:OBJECTS_DIR = /tmp/
 
 INCLUDEPATH += "include/"
