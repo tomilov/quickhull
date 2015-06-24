@@ -90,7 +90,7 @@ struct quick_hull
 
         using normal = std::valarray< value_type >;
 
-        // !each neighbour lies against corresponding vertex and vice versa
+        // each neighbouring facet lies against corresponding vertex and vice versa
         point_array vertices_; // dimension_ points (oriented)
         facet_array neighbours_; // dimension_ neighbouring facets
 
@@ -132,30 +132,20 @@ struct quick_hull
               size_type const _vertex)
             : normal_(_dimension)
         {
-            assert(!_simplex.empty());
+            assert(_simplex.size() == _dimension + 1);
+            vertices_.reserve(_dimension);
             neighbours_.reserve(_dimension);
-            if ((_vertex % 2) == 0) {
-                auto const end = std::cend(_simplex);
-                auto const mid = std::prev(end, static_cast< difference_type >(_vertex));
-                vertices_.assign(std::cbegin(_simplex), std::prev(mid));
-                vertices_.insert(std::cend(vertices_), mid, end);
-                for (size_type neighbour = 0; neighbour <= _dimension; ++neighbour) {
-                    if (_dimension - neighbour != _vertex) {
-                        neighbours_.push_back(_dimension - neighbour);
-                    }
-                }
-            } else {
-                auto const beg = std::crbegin(_simplex);
-                auto const mid = std::next(beg, static_cast< difference_type >(_vertex));
-                vertices_.assign(beg, mid);
-                vertices_.insert(std::cend(vertices_), std::next(mid), std::crend(_simplex));
-                for (size_type neighbour = 0; neighbour <= _dimension; ++neighbour) {
-                    if (neighbour != _vertex) {
-                        neighbours_.push_back(neighbour);
-                    }
+            for (size_type v = 0; v <= _dimension; ++v) {
+                if (v + _vertex != _dimension) {
+                    vertices_.push_back(_simplex[v]);
+                    neighbours_.push_back(_dimension - v);
                 }
             }
-            assert(vertices_.size() == _dimension);
+            if (_vertex % 2 != 0) {
+                using std::swap;
+                swap(vertices_.front(), vertices_.back());
+                swap(neighbours_.front(), neighbours_.back());
+            }
         }
 
         value_type
@@ -709,7 +699,8 @@ public : // largest possible simplex heuristic, convex hull algorithm
         assert(basis_.size() == dimension_ + 1); // simplex
         // simplex construction
         if (hypervolume(basis_) < zero) {
-            std::swap(basis_.front(), basis_.back());
+            using std::swap;
+            swap(basis_.front(), basis_.back());
         }
         for (size_type newfacet = 0; newfacet <= dimension_; ++newfacet) {
             facets_.emplace_back(dimension_, basis_, newfacet);
@@ -806,14 +797,16 @@ public : // largest possible simplex heuristic, convex hull algorithm
         size_type const facets_count_ = facets_.size();
         for (size_type f = 0; f < facets_count_; ++f) { // check whether the inner point is inside relative to each hull facet
             facet const & facet_ = facets_[f];
+            surface_points_.insert(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
             for (size_type const neighbour : facet_.neighbours_) {
                 facet const & neighbour_ = facets_[neighbour];
                 for (size_type v = 0; v < dimension_; ++v) {
                     if (neighbour_.neighbours_[v] == f) {
-                        if (_eps < facet_.distance(*neighbour_.vertices_[v])) {
+                        if (_eps < facet_.distance(*neighbour_.vertices_[v])) { // opposite vertex in neighbouring facet
                             return false; // facet is not locally convex at all its ridges
+                        } else {
+                            break;
                         }
-                        break;
                     }
                 }
             }
@@ -832,7 +825,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         facet const & first_ = facets_.front();
         if (!(first_.distance(inner_point_) < -_eps)) {
-            return false;
+            return false; // inner point is not on negative side of the first facet, therefore structure is not convex
         }
         row ray_(zero, dimension_);
         for (point_iterator const & vertex : first_.vertices_) {
@@ -857,7 +850,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             facet const & facet_ = facets_[f];
             value_type const numerator_ = facet_.distance(inner_point_);
             if (!(numerator_ < -_eps)) {
-                return false; // inner point is not on negative side of all facets, i.e. structure is not convex
+                return false; // inner point is not on negative side of all the facets, i.e. structure is not convex
             }
             value_type const denominator_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(facet_.normal_), zero);
             if (!(_eps < denominator_)) { // ray is parallel to the plane or directed away from the plane

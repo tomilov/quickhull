@@ -40,6 +40,11 @@ main(int argc, char * argv[])
         }
     }
     std::istream & in_ = ifs_.is_open() ? ifs_ : std::cin;
+
+    in_.sync_with_stdio(false);
+    out_.sync_with_stdio(false);
+    err_.sync_with_stdio(false);
+
     out_ << "#input file: " << ((argc < 2) ? "stdin" : argv[1]) << '\n';
     std::string line_;
     if (!std::getline(in_, line_)) {
@@ -135,7 +140,7 @@ main(int argc, char * argv[])
         }
         {
             steady_clock::time_point const start = steady_clock::now();
-            //quick_hull_.create_convex_hull();
+            quick_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
             out_ << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
             if (!quick_hull_.check(eps + eps)) {
