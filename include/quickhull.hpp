@@ -136,9 +136,9 @@ struct quick_hull
             vertices_.reserve(_dimension);
             neighbours_.reserve(_dimension);
             for (size_type v = 0; v <= _dimension; ++v) {
-                if (v + _vertex != _dimension) {
+                if (v != _vertex) {
                     vertices_.push_back(_simplex[v]);
-                    neighbours_.push_back(_dimension - v);
+                    neighbours_.push_back(v);
                 }
             }
             if (_vertex % 2 != 0) {
