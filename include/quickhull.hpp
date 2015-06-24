@@ -103,27 +103,31 @@ struct quick_hull
 
         void
         init(size_type const _dimension,
-             point_array && _vertices,
+             point_array const & _vertices,
              size_type const _against,
+             point_iterator const & _apex,
              size_type const _neighbour)
         {
             static_cast< void >(_dimension);
-            assert(_vertices.size() == _dimension);
-            vertices_ = std::move(_vertices);
+            assert(vertices_.size() == _dimension);
+            vertices_ = _vertices;
+            vertices_[_against] = _apex;
             assert(neighbours_.size() == _dimension);
             neighbours_[_against] = _neighbour;
             assert(normal_.size() == _dimension);
         }
 
         facet(size_type const _dimension,
-              point_array && _vertices,
+              point_array const & _vertices,
               size_type const _against,
+              point_iterator const & _apex,
               size_type const _neighbour)
-            : vertices_(std::move(_vertices))
+            : vertices_(_vertices)
             , neighbours_(_dimension)
             , normal_(_dimension)
         {
-            assert(vertices_.size() == _dimension);
+            assert(vertices_.size() == dimension_);
+            vertices_[_against] = _apex;
             neighbours_[_against] = _neighbour;
         }
 
@@ -423,12 +427,11 @@ private :
     std::set< size_type, std::greater< size_type > > removed_facets_;
 
     size_type
-    add_facet(point_array _vertices, size_type const _against, point_iterator const & _apex, size_type const _neighbour)
+    add_facet(point_array const & _vertices, size_type const _against, point_iterator const & _apex, size_type const _neighbour)
     {
-        _vertices[_against] = _apex;
         if (removed_facets_.empty()) {
             size_type const f = facets_.size();
-            facets_.emplace_back(dimension_, std::move(_vertices), _against, _neighbour);
+            facets_.emplace_back(dimension_, _vertices, _against, _apex, _neighbour);
             facet & facet_ = facets_.back();
             set_hyperplane_equation(facet_);
             return f;
@@ -437,7 +440,7 @@ private :
             size_type const f = *rend;
             removed_facets_.erase(rend);
             facet & facet_ = facets_[f];
-            facet_.init(dimension_, std::move(_vertices), _against, _neighbour);
+            facet_.init(dimension_, _vertices, _against, _apex, _neighbour);
             set_hyperplane_equation(facet_);
             return f;
         }
@@ -562,7 +565,6 @@ private :
                 }
             }
         }
-        assert(std::find(std::cbegin(facets_[_facet].neighbours_), std::cend(facets_[_facet].neighbours_), _from) != std::cend(facets_[_facet].neighbours_));
     }
 
     // adjacency of new facets via its common ridges:
@@ -719,6 +721,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         point_list outside_;
         facet_array neighbours_(dimension_);
         point_array vertices_;
+        vertices_.reserve(dimension_);
         facet_array newfacets_;
         while (!ranking_.empty()) {
             size_type best_facet = get_best_facet();
@@ -743,7 +746,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 outside_.splice(std::cend(outside_), std::move(facet_.outside_));
                 facet_.coplanar_.clear();
                 neighbours_.swap(facet_.neighbours_);
-                vertices_ = std::move(facet_.vertices_);
+                vertices_ = facet_.vertices_;
                 unrank(bth_facet);
                 for (size_type against = 0; against < dimension_; ++against) {
                     size_type const neighbour = neighbours_[against];
@@ -837,7 +840,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         ray_ /= value_type(dimension_);
         ray_ -= inner_point_;
-        if (!(_eps < std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero))) {
+        if (!(zero < std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero))) {
             return false;
         }
         matrix g_(dimension_); // storage d * (d + 1) for Gaussian elimination with partial pivoting
@@ -853,7 +856,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 return false; // inner point is not on negative side of all the facets, i.e. structure is not convex
             }
             value_type const denominator_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(facet_.normal_), zero);
-            if (!(_eps < denominator_)) { // ray is parallel to the plane or directed away from the plane
+            if (!(zero < denominator_)) { // ray is parallel to the plane or directed away from the plane
                 continue;
             }
             intersection_point_ = inner_point_ - ray_ * (numerator_ / denominator_);
