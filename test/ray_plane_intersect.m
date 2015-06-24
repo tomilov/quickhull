@@ -1,5 +1,7 @@
 #! /usr/bin/octave -qf
 
+#using: ./ray_plane_intersect.m | gnuplot -p
+
 pkg load geometry
 
 lo = -1

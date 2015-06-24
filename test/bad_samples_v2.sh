@@ -22,7 +22,7 @@ do
         for j in $(seq $lower $upper)
         do
 		rbox n D3 10000 t$j > /tmp/qh$j
-		LHS=`cat /tmp/qh$j | ~user/quickhull/bin/quickhull | head -7 | grep "#number of facets:" | cut -d' ' -f 4`
+		LHS=`cat /tmp/qh$j | /tmp/quickhull | head -7 | grep "#number of facets:" | cut -d' ' -f 4`
 		RHS=`qconvex Qt Tv s TI /tmp/qh$j 2>&1 | grep "Number of facets:" | cut -d' ' -f6`
 		rm /tmp/qh$j
 		if [ "$LHS" != "$RHS" ];

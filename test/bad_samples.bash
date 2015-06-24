@@ -14,7 +14,7 @@ do
     (
         for j in $(seq $lower $upper)
         do
-            rbox D3 10 s t$j | ./quickhull
+            rbox D3 10 s t$j | /tmp/quickhull
         done
     ) &> test_$i.txt &
     pids+=("$!")
