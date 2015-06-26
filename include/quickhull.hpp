@@ -788,12 +788,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
     bool
     check() const
     {
-        return check(eps);
-    }
-
-    bool
-    check(value_type const & _eps) const
-    {
         // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
         // Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
         std::set< point_iterator > surface_points_;
@@ -805,7 +799,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 facet const & neighbour_ = facets_[neighbour];
                 for (size_type v = 0; v < dimension_; ++v) {
                     if (neighbour_.neighbours_[v] == f) {
-                        if (_eps < facet_.distance(*neighbour_.vertices_[v])) { // opposite vertex in neighbouring facet
+                        if (!(facet_.distance(*neighbour_.vertices_[v]) < zero)) { // opposite vertex in neighbouring facet
                             return false; // facet is not locally convex at all its ridges
                         } else {
                             break;
@@ -827,7 +821,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             inner_point_ /= value_type(surface_points_.size());
         }
         facet const & first_ = facets_.front();
-        if (!(first_.distance(inner_point_) < -_eps)) {
+        if (!(first_.distance(inner_point_) < zero)) {
             return false; // inner point is not on negative side of the first facet, therefore structure is not convex
         }
         row ray_(zero, dimension_);
@@ -852,7 +846,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             using std::abs;
             facet const & facet_ = facets_[f];
             value_type const numerator_ = facet_.distance(inner_point_);
-            if (!(numerator_ < -_eps)) {
+            if (!(numerator_ < zero)) {
                 return false; // inner point is not on negative side of all the facets, i.e. structure is not convex
             }
             value_type const denominator_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(facet_.normal_), zero);
@@ -860,7 +854,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 continue;
             }
             intersection_point_ = inner_point_ - ray_ * (numerator_ / denominator_);
-            assert(!(_eps < abs(facet_.distance(intersection_point_))));
+            assert(!(eps < abs(facet_.distance(intersection_point_))));
             for (size_type v = 0; v < dimension_; ++v) {
                 auto beg = std::cbegin(*facet_.vertices_[v]);
                 for (size_type r = 0; r < dimension_; ++r) {
@@ -886,7 +880,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         }
                     }
                 }
-                if (max_ < _eps) {
+                if (max_ < eps) {
                     continue; // point is origin => does not make a contribution
                 }
                 if (pivot != i) {
@@ -914,7 +908,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
                     value_type const & gii_ = gi_[i];
-                    if (abs(gii_) < _eps) {
+                    if (abs(gii_) < eps) {
                         continue; // point is origin
                     }
                     xi_ /= gii_;
