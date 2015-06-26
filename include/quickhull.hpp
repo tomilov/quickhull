@@ -861,7 +861,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 continue;
             }
             intersection_point_ = inner_point_ - ray_ * (numerator_ / denominator_);
-            assert(!(eps < abs(facet_.distance(intersection_point_))));
             for (size_type v = 0; v < dimension_; ++v) {
                 auto beg = std::cbegin(*facet_.vertices_[v]);
                 for (size_type r = 0; r < dimension_; ++r) {
@@ -902,7 +901,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         }
                     }
                 }
-                assert(eps < max_); // vertex cannot match origin
+                assert(_eps < max_); // vertex cannot match origin
                 if (pivot != i) {
                     gi_.swap(g_[pivot]);
                 }
@@ -928,7 +927,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
                     value_type const & gii_ = gi_[i];
-                    assert(eps < abs(gii_)); // vertex cannot match origin
+                    assert(_eps < abs(gii_)); // vertex cannot match origin
                     xi_ /= gii_;
                     if ((xi_ < zero) || (one < xi_)) {
                         in_range_ = false; // barycentric coordinate does not lie in [0;1] interval => miss
