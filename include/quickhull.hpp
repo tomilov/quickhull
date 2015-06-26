@@ -145,7 +145,7 @@ struct quick_hull
                     neighbours_.push_back(v);
                 }
             }
-            if ((_vertex % 2) != 0) {
+            if (((_dimension - _vertex) % 2) != 0) {
                 using std::swap;
                 swap(vertices_.front(), vertices_.back());
                 swap(neighbours_.front(), neighbours_.back());
