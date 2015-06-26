@@ -126,7 +126,7 @@ struct quick_hull
             , neighbours_(_dimension)
             , normal_(_dimension)
         {
-            assert(vertices_.size() == dimension_);
+            assert(vertices_.size() == _dimension);
             vertices_[_against] = _apex;
             neighbours_[_against] = _neighbour;
         }
@@ -799,7 +799,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 facet const & neighbour_ = facets_[neighbour];
                 for (size_type v = 0; v < dimension_; ++v) {
                     if (neighbour_.neighbours_[v] == f) {
-                        if (!(facet_.distance(*neighbour_.vertices_[v]) < zero)) { // opposite vertex in neighbouring facet
+                        if (!(facet_.distance(*neighbour_.vertices_[v]) < eps)) { // opposite vertex in neighbouring facet
                             return false; // facet is not locally convex at all its ridges
                         } else {
                             break;
