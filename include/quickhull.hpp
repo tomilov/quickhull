@@ -788,6 +788,12 @@ public : // largest possible simplex heuristic, convex hull algorithm
     bool
     check() const
     {
+        return check(eps);
+    }
+
+    bool
+    check(value_type const & _eps) const
+    {
         // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
         // Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
         std::set< point_iterator > surface_points_;
@@ -799,7 +805,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 facet const & neighbour_ = facets_[neighbour];
                 for (size_type v = 0; v < dimension_; ++v) {
                     if (neighbour_.neighbours_[v] == f) {
-                        if (!(facet_.distance(*neighbour_.vertices_[v]) < eps)) { // opposite vertex in neighbouring facet
+                        if (_eps < facet_.distance(*neighbour_.vertices_[v])) { // opposite vertex in neighbouring facet
                             return false; // facet is not locally convex at all its ridges
                         } else {
                             break;
@@ -842,6 +848,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             row_.resize(dimension_ + 1);
         }
         row intersection_point_(zero, dimension_);
+        row centroid_(zero, dimension_);
         for (size_type f = 1; f < facets_count_; ++f) {
             using std::abs;
             facet const & facet_ = facets_[f];
@@ -863,7 +870,22 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 }
             }
             for (size_type r = 0; r < dimension_; ++r) {
-                g_[r][dimension_] = intersection_point_[r];
+                row & gr_ = g_[r];
+                gr_[dimension_] = intersection_point_[r];
+                centroid_[r] = gr_.sum();
+            }
+            centroid_ /= value_type(dimension_ + 1);
+            for (size_type r = 0; r < dimension_; ++r) {
+                row & gr_ = g_[r];
+                gr_ -= centroid_[r];
+                centroid_[r] = gr_.max() - gr_.min();
+            }
+            centroid_ *= centroid_;
+            using std::sqrt;
+            centroid_ = sqrt(centroid_.sum()) / (one + one);
+            centroid_ *= facet_.normal_;
+            for (size_type r = 0; r < dimension_; ++r) { // shift by half of bounding box main diagonal length in perpendicular to facet direction
+                g_[r] += centroid_[r];
             }
             // Gaussian elimination
             for (size_type i = 0; i < dimension_; ++i) {
@@ -880,9 +902,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         }
                     }
                 }
-                if (max_ < eps) {
-                    continue; // point is origin => does not make a contribution
-                }
+                assert(eps < max_); // vertex cannot match origin
                 if (pivot != i) {
                     gi_.swap(g_[pivot]);
                 }
@@ -908,9 +928,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
                     value_type const & gii_ = gi_[i];
-                    if (abs(gii_) < eps) {
-                        continue; // point is origin
-                    }
+                    assert(eps < abs(gii_)); // vertex cannot match origin
                     xi_ /= gii_;
                     if ((xi_ < zero) || (one < xi_)) {
                         in_range_ = false; // barycentric coordinate does not lie in [0;1] interval => miss
