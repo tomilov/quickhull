@@ -163,6 +163,7 @@ struct quick_hull
     using facets = std::deque< facet >;
 
     facets facets_;
+    point_list internal_set_;
 
     value_type
     cos_of_dihedral_angle(facet const & _this, facet const & _other) const
@@ -508,50 +509,33 @@ private :
     using facet_unordered_set = std::unordered_set< size_type >;
 
     facet_unordered_set visited_;
-    facet_unordered_set bth_facets_; // before-the-horizon facets
-    facet_unordered_set not_bth_facets_; // visible, but not before-the-horizon facets
+    facet_unordered_set visible_;
 
     bool
-    is_invisible(size_type const _facet) const // to detect over-the-horizon facets
+    process_visibles(point_list & _outside, facet_array & _newfacets, size_type const _facet, point_iterator const & _apex) // traverse the graph of visible facets
     {
-        return (0 == not_bth_facets_.count(_facet)) && (0 == bth_facets_.count(_facet));
-    }
-
-    bool
-    process_visibles(size_type const _facet, point const & _apex) // traverse the graph of visible facets
-    {
-        visited_.insert(_facet);
-        facet const & facet_ = facets_[_facet];
-        if (eps < facet_.distance(_apex)) {
-            bool bth_ = false;
-            for (size_type const neighbour : facet_.neighbours_) {
-                if (visited_.count(neighbour) == 0) {
-                    if (process_visibles(neighbour, _apex)) {
-                        bth_ = true;
-                    }
-                } else if (!bth_) {
-                    if (is_invisible(neighbour)){
-                        bth_ = true;
-                    }
+        if (!visited_.insert(_facet).second) {
+            return (visible_.count(_facet) != 0);
+        }
+        facet & facet_ = facets_[_facet];
+        if (eps < facet_.distance(*_apex)) {
+            visible_.insert(_facet);
+            _outside.splice(std::cend(_outside), std::move(facet_.outside_));
+            facet_.coplanar_.clear();
+            for (size_type vertex = 0; vertex < dimension_; ++vertex) {
+                size_type const neighbour = facet_.neighbours_[vertex];
+                if (!process_visibles(_outside, _newfacets, neighbour, _apex)) {
+                    size_type const newfacet = add_facet(facet_.vertices_, vertex, _apex, neighbour);
+                    _newfacets.push_back(newfacet);
+                    replace_neighbour(neighbour, _facet, newfacet);
+                    find_adjacent_facets(newfacet, vertex, _apex);
                 }
             }
-            if (bth_) {
-                bth_facets_.insert(_facet);
-            } else {
-                not_bth_facets_.insert(_facet);
-            }
-            return false;
-        } else {
+            unrank(_facet);
             return true;
+        } else {
+            return false;
         }
-    }
-
-    void
-    clear_visibles()
-    {
-        visited_.clear();
-        bth_facets_.clear();
-        not_bth_facets_.clear();
     }
 
     void
@@ -677,7 +661,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         basis_.reserve(dimension_ + 1);
         basis_.push_back(_beg);
-        point_list internal_set_; // it is possible to track "internal set" during whole the algorithm, but it is non-zero-cost
         {
             auto it = _beg;
             while (++it != _end) {
@@ -719,55 +702,28 @@ public : // largest possible simplex heuristic, convex hull algorithm
         assert(facets_.size() == dimension_ + 1);
         assert(removed_facets_.empty());
         point_list outside_;
-        facet_array neighbours_(dimension_);
-        point_array vertices_;
-        vertices_.reserve(dimension_);
         facet_array newfacets_;
         while (!ranking_.empty()) {
             size_type best_facet = get_best_facet();
-            point_list & best_facet_outsides_ = facets_[best_facet].outside_;
-            assert(!best_facet_outsides_.empty());
-            point_iterator const apex = best_facet_outsides_.front();
-            best_facet_outsides_.pop_front();
-            if (process_visibles(best_facet, *apex)) {
+            point_list & o_ = facets_[best_facet].outside_;
+            assert(!o_.empty());
+            point_iterator const apex = o_.front();
+            o_.pop_front();
+            assert(outside_.empty());
+            assert(newfacets_.empty());
+            assert(unique_ridges_.empty());
+            if (!process_visibles(outside_, newfacets_, best_facet, apex)) {
                 assert(false);
             }
-            assert(outside_.empty());
-            for (size_type const not_bth_facet : not_bth_facets_) {
-                facet & facet_ = facets_[not_bth_facet];
-                outside_.splice(std::cend(outside_), std::move(facet_.outside_));
-                facet_.coplanar_.clear();
-                unrank(not_bth_facet);
-            }
-            assert(newfacets_.empty());
-            //unique_ridges_.reserve((dimension_ - 1) * bth_facets_.size());
-            for (size_type const bth_facet : bth_facets_) {
-                facet & facet_ = facets_[bth_facet];
-                outside_.splice(std::cend(outside_), std::move(facet_.outside_));
-                facet_.coplanar_.clear();
-                neighbours_.swap(facet_.neighbours_);
-                vertices_ = facet_.vertices_;
-                unrank(bth_facet);
-                for (size_type against = 0; against < dimension_; ++against) {
-                    size_type const neighbour = neighbours_[against];
-                    if (is_invisible(neighbour)) { // is it over-the-horizon facet?
-                        size_type const newfacet = add_facet(vertices_, against, apex, neighbour);
-                        newfacets_.push_back(newfacet);
-                        replace_neighbour(neighbour, bth_facet, newfacet);
-                        find_adjacent_facets(newfacet, against, apex);
-                    }
-                }
-            }
-            assert(unique_ridges_.empty());
-            clear_visibles();
+            visited_.clear();
+            visible_.clear();
             for (size_type const newfacet : newfacets_) {
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
             newfacets_.clear();
-            outside_.clear();
+            internal_set_.splice(std::cend(internal_set_), std::move(outside_));
         }
         assert(ranking_meta_.empty());
-        assert(outside_.empty());
         { // compactify
             size_type source = facets_.size();
             for (size_type const destination : removed_facets_) {
@@ -786,12 +742,6 @@ public : // largest possible simplex heuristic, convex hull algorithm
     }
 
     bool
-    check() const
-    {
-        return check(eps);
-    }
-
-    bool
     check(value_type const & _eps) const
     {
         // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
@@ -803,12 +753,14 @@ public : // largest possible simplex heuristic, convex hull algorithm
             surface_points_.insert(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
             for (size_type const neighbour : facet_.neighbours_) {
                 facet const & neighbour_ = facets_[neighbour];
-                for (size_type v = 0; v < dimension_; ++v) {
-                    if (neighbour_.neighbours_[v] == f) {
-                        if (_eps < facet_.distance(*neighbour_.vertices_[v])) { // opposite vertex in neighbouring facet
-                            return false; // facet is not locally convex at all its ridges
-                        } else {
-                            break;
+                if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoiding roundoff errors
+                    for (size_type v = 0; v < dimension_; ++v) {
+                        if (neighbour_.neighbours_[v] == f) { // opposite vertex in neighbouring facet
+                            if (_eps < facet_.distance(*neighbour_.vertices_[v])) {
+                                return false; // facet is not locally convex at ridge, common for facet_ and neighbour_ facets
+                            } else {
+                                break;
+                            }
                         }
                     }
                 }
@@ -940,6 +892,12 @@ public : // largest possible simplex heuristic, convex hull algorithm
             }
         }
         return true;
+    }
+
+    bool
+    check() const
+    {
+        return check(eps);
     }
 
 };
