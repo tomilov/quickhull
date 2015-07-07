@@ -163,7 +163,6 @@ struct quick_hull
     using facets = std::deque< facet >;
 
     facets facets_;
-    point_list internal_set_;
 
     value_type
     cos_of_dihedral_angle(facet const & _this, facet const & _other) const
@@ -531,6 +530,7 @@ private :
                     find_adjacent_facets(newfacet, vertex, _apex);
                 }
             }
+            // move all (not contained in internal_set_) facet_.vertices_ to internal_set_ if all the neighbours are visible
             unrank(_facet);
             return true;
         } else {
@@ -661,6 +661,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         basis_.reserve(dimension_ + 1);
         basis_.push_back(_beg);
+        point_list internal_set_;
         {
             auto it = _beg;
             while (++it != _end) {
@@ -707,7 +708,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             size_type best_facet = get_best_facet();
             point_list & o_ = facets_[best_facet].outside_;
             assert(!o_.empty());
-            point_iterator const apex = o_.front();
+            point_iterator const apex = std::move(o_.front());
             o_.pop_front();
             assert(outside_.empty());
             assert(newfacets_.empty());
@@ -721,7 +722,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
             newfacets_.clear();
-            internal_set_.splice(std::cend(internal_set_), std::move(outside_));
+            outside_.clear(); // completely splice to internal_set_
         }
         assert(ranking_meta_.empty());
         { // compactify
