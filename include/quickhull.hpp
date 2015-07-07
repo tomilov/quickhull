@@ -145,7 +145,7 @@ struct quick_hull
                     neighbours_.push_back(v);
                 }
             }
-            if (((_dimension - _vertex) % 2) != 0) {
+            if (((_dimension - _vertex) % 2) == 0) {
                 using std::swap;
                 swap(vertices_.front(), vertices_.back());
                 swap(neighbours_.front(), neighbours_.back());
@@ -684,7 +684,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         assert(basis_.size() == dimension_ + 1); // simplex
         // simplex construction
-        if (hypervolume(basis_) < zero) {
+        if (zero < hypervolume(basis_)) {
             using std::swap;
             swap(basis_.front(), basis_.back());
         }
