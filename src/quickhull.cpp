@@ -118,8 +118,12 @@ main(int argc, char * argv[])
     out_ << "#D = " << dimension_ << '\n';
     out_ << "#N = " << count_ << '\n';
     using quick_hull_type = quick_hull< typename points::const_iterator >;
+#if 0
     using std::sqrt;
-    value_type const eps = sqrt(std::numeric_limits< value_type >::epsilon());
+    value_type const eps = sqrt(std::numeric_limits< value_type >::epsilon()); // use relaxed constraints for input, which supposedly should produce a plenty of complanar facets, like 'rbox D3 27 M3,4'
+#else
+    value_type const eps = std::numeric_limits< value_type >::epsilon();
+#endif
     quick_hull_type quick_hull_(dimension_, eps);
     typename quick_hull_type::point_array initial_simplex_;
     {
