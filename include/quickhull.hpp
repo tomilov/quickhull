@@ -58,6 +58,20 @@ struct quick_hull
     size_type const dimension_;
     value_type const eps;
 
+private :
+
+    value_type const zero = value_type(0);
+    value_type const one = value_type(1);
+
+    using row = std::valarray< value_type >;
+    using matrix = std::vector< row >;
+
+    matrix matrix_;
+    matrix shadow_matrix_;
+    matrix minor_;
+
+public :
+
     quick_hull(size_type const _dimension,
                value_type _eps = std::numeric_limits< value_type >::epsilon())
         : dimension_(_dimension)
@@ -88,8 +102,6 @@ struct quick_hull
     struct facet // (d - 1)-dimensional face
     {
 
-        using normal = std::valarray< value_type >;
-
         // each neighbouring facet lies against corresponding vertex and vice versa
         point_array vertices_; // dimension_ points (oriented)
         facet_array neighbours_; // dimension_ neighbouring facets
@@ -98,7 +110,7 @@ struct quick_hull
         point_deque coplanar_; // coplanar points, for resulting convex hull it is guaranted that they lies within the facet or on a facet's ridge (in later case these points can be non-unique)
 
         // equation of hyperplane supported the facet
-        normal normal_; // components of normalized normal vector
+        row normal_; // components of normalized normal vector
         value_type D; // distance from the origin to the hyperplane
 
         void
@@ -172,20 +184,8 @@ struct quick_hull
 
 private :
 
-    // math (simple functions, matrices, etc):
-
-    value_type const zero = value_type(0);
-    value_type const one = value_type(1);
-
-    using row = std::valarray< value_type >;
-    using matrix = std::vector< row >;
-
-    matrix matrix_;
-    matrix shadow_matrix_;
-    matrix minor_;
-
     void
-    transpose() // transpose to cheaper filling columns with ones
+    transpose() // transpose shadow matrix to cheaper filling columns with 1-s
     {
         for (size_type r = 0; r < dimension_; ++r) {
             row & row_ = shadow_matrix_[r];
@@ -203,7 +203,7 @@ private :
     }
 
     void
-    restore_matrix(size_type const _identity) // load matrix from storage and replace _identity column with ones
+    restore_matrix(size_type const _identity) // load matrix from storage and replace _identity column with 1-s
     {
         for (size_type c = 0; c < dimension_; ++c) {
             row & col_ = matrix_[c];
@@ -230,7 +230,7 @@ private :
 
     // based on LUP decomposition (complexity is (n^3 / 3 + n^2 / 2 - 5 * n / 6) vs (2 * n^3 / 3 + n^2 + n / 3 - 2) for QR decomposition via Householder reflections) http://math.stackexchange.com/a/93508/54348
     value_type
-    det(matrix & _matrix, size_type const _dimension)
+    det(matrix & _matrix, size_type const _dimension) // hottest function
     { // produces lower unit triangular matrix and upper triangular
         assert(0 < _dimension);
         value_type det_ = one;
@@ -285,8 +285,6 @@ private :
         return det(matrix_, dimension_);
     }
 
-    // geometry and basic operations on geometric primitives:
-
     void
     set_hyperplane_equation(facet & _facet)
     {
@@ -294,6 +292,8 @@ private :
             std::copy_n(std::cbegin(*_facet.vertices_[r]), dimension_, std::begin(shadow_matrix_[r]));
         }
         transpose();
+        restore_matrix();
+        _facet.D = -det();
         value_type N = zero;
         for (size_type i = 0; i < dimension_; ++i) {
             restore_matrix(i);
@@ -302,10 +302,9 @@ private :
             N += n * n;
         }
         using std::sqrt;
-        N = one / sqrt(std::move(N));
-        _facet.normal_ *= N;
-        restore_matrix();
-        _facet.D = -det() * std::move(N);
+        N = sqrt(std::move(N));
+        _facet.normal_ /= N;
+        _facet.D /= std::move(N);
     }
 
     bool
@@ -322,7 +321,7 @@ private :
         }
         for (size_type i = 0; i < _rank; ++i) { // Householder transformation
             value_type norm_ = zero;
-            row & qri_ = shadow_matrix_[i]; // shadow_matrix_ is packed QR after
+            row & qri_ = shadow_matrix_[i]; // shadow_matrix_ is packed QR after all
             for (size_type j = i; j < dimension_; ++j) {
                 value_type const & qrij_ = qri_[j];
                 norm_ += qrij_ * qrij_;
@@ -366,7 +365,7 @@ private :
     {
         assert(!(dimension_ < _rank));
         for (size_type i = 0; i < _rank; ++i) {
-            row & qi_ = matrix_[i]; // matrix_ is Q after
+            row & qi_ = matrix_[i]; // matrix_ is Q after all
             qi_ = zero;
             qi_[i] = one;
             size_type j = _rank;
@@ -410,7 +409,7 @@ private :
             }
             projection_ *= projection_;
             using std::sqrt;
-            value_type d_ = sqrt(projection_.sum()); // distance to subspace
+            value_type d_ = sqrt(projection_.sum()); // distance to the subspace
             if (distance_ < d_) {
                 distance_ = std::move(d_);
                 furthest = it;
@@ -517,25 +516,24 @@ private :
             return (visible_.count(_facet) != 0);
         }
         facet & facet_ = facets_[_facet];
-        if (eps < facet_.distance(*_apex)) {
-            visible_.insert(_facet);
-            _outside.splice(std::cend(_outside), std::move(facet_.outside_));
-            facet_.coplanar_.clear();
-            for (size_type vertex = 0; vertex < dimension_; ++vertex) {
-                size_type const neighbour = facet_.neighbours_[vertex];
-                if (!process_visibles(_outside, _newfacets, neighbour, _apex)) {
-                    size_type const newfacet = add_facet(facet_.vertices_, vertex, _apex, neighbour);
-                    _newfacets.push_back(newfacet);
-                    replace_neighbour(neighbour, _facet, newfacet);
-                    find_adjacent_facets(newfacet, vertex, _apex);
-                }
-            }
-            // move all (not contained in internal_set_) facet_.vertices_ to internal_set_ if all the neighbours are visible
-            unrank(_facet);
-            return true;
-        } else {
+        if (!(eps < facet_.distance(*_apex))) {
             return false;
         }
+        visible_.insert(_facet);
+        _outside.splice(std::cend(_outside), std::move(facet_.outside_));
+        facet_.coplanar_.clear();
+        for (size_type vertex = 0; vertex < dimension_; ++vertex) {
+            size_type const neighbour = facet_.neighbours_[vertex];
+            if (!process_visibles(_outside, _newfacets, neighbour, _apex)) {
+                size_type const newfacet = add_facet(facet_.vertices_, vertex, _apex, neighbour);
+                _newfacets.push_back(newfacet);
+                replace_neighbour(neighbour, _facet, newfacet);
+                find_adjacent_facets(newfacet, vertex, _apex);
+            }
+        }
+        // to track internal_set_: move all (not yet contained in internal_set_) facet_.vertices_ to internal_set_ if all the neighbours are visible
+        unrank(_facet);
+        return true;
     }
 
     void
@@ -624,7 +622,7 @@ private :
         }
     }
 
-public : // largest possible simplex heuristic, convex hull algorithm
+public : // hypervolume of simplex, largest possible simplex heuristic, convex hull algorithm:
 
     // http://math.stackexchange.com/questions/822741/
     value_type
@@ -654,7 +652,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
     point_array
     create_initial_simplex(point_iterator const _beg, point_iterator const _end)
     {
-        // selection of (dimension_ + 1) affinely independent points
+        // construction of reference set of universe of points
         point_array basis_;
         if (_beg == _end) {
             return basis_;
@@ -668,10 +666,11 @@ public : // largest possible simplex heuristic, convex hull algorithm
                 internal_set_.push_back(it);
             }
         }
+        // selection of (dimension_ + 1) affinely independent points
         if (!steal_best(internal_set_, basis_)) {
             return basis_; // can't find affinely independent second point
         }
-        { // rejudge 0-indexed point
+        { // reject 0-indexed point to rejudge it
             point_iterator & first_ = basis_.front();
             internal_set_.push_back(first_);
             first_ = std::move(basis_.back());
@@ -679,10 +678,10 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         for (size_type i = 0; i < dimension_; ++i) {
             if (!steal_best(internal_set_, basis_)) {
-                return basis_; // can't find (i + 2) affinely independent point
+                return basis_; // can't find (i + 2) affinely independent points
             }
         }
-        assert(basis_.size() == dimension_ + 1); // simplex
+        assert(basis_.size() == dimension_ + 1); // enough for simplex construction
         // simplex construction
         if (zero < hypervolume(basis_)) {
             using std::swap;
@@ -697,6 +696,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         return basis_;
     }
 
+    // Barber, C. B., D.P. Dobkin, and H.T. Huhdanpaa, 1995. "The Quickhull Algorithm for Convex Hulls", ACM Transactions on Mathematical Software.
     void
     create_convex_hull()
     {
@@ -705,24 +705,22 @@ public : // largest possible simplex heuristic, convex hull algorithm
         point_list outside_;
         facet_array newfacets_;
         while (!ranking_.empty()) {
-            size_type best_facet = get_best_facet();
+            size_type const best_facet = get_best_facet();
             point_list & o_ = facets_[best_facet].outside_;
             assert(!o_.empty());
             point_iterator const apex = std::move(o_.front());
             o_.pop_front();
-            assert(outside_.empty());
-            assert(newfacets_.empty());
-            assert(unique_ridges_.empty());
             if (!process_visibles(outside_, newfacets_, best_facet, apex)) {
                 assert(false);
             }
             visited_.clear();
             visible_.clear();
+            assert(unique_ridges_.empty());
             for (size_type const newfacet : newfacets_) {
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
             newfacets_.clear();
-            outside_.clear(); // completely splice to internal_set_
+            outside_.clear(); // to track internal_set_: splice points from outside_ to internal_set_
         }
         assert(ranking_meta_.empty());
         { // compactify
@@ -742,23 +740,23 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
     }
 
+    // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
+    // Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
     bool
     check(value_type const & _eps) const
     {
-        // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
-        // Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
         std::set< point_iterator > surface_points_;
         size_type const facets_count_ = facets_.size();
-        for (size_type f = 0; f < facets_count_; ++f) { // check whether the inner point is inside relative to each hull facet
+        for (size_type f = 0; f < facets_count_; ++f) { // check whether the inner point is inside relative to each hull facet or not
             facet const & facet_ = facets_[f];
             surface_points_.insert(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
             for (size_type const neighbour : facet_.neighbours_) {
                 facet const & neighbour_ = facets_[neighbour];
-                if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoiding roundoff errors
+                if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoiding some of roundoff errors
                     for (size_type v = 0; v < dimension_; ++v) {
-                        if (neighbour_.neighbours_[v] == f) { // opposite vertex in neighbouring facet
+                        if (neighbour_.neighbours_[v] == f) { // opposite to facet_ vertex into neighbour_ facet
                             if (_eps < facet_.distance(*neighbour_.vertices_[v])) {
-                                return false; // facet is not locally convex at ridge, common for facet_ and neighbour_ facets
+                                return false; // facet is not locally convex at the ridge, common for facet_ and neighbour_ facets
                             } else {
                                 break;
                             }
@@ -769,26 +767,24 @@ public : // largest possible simplex heuristic, convex hull algorithm
         }
         assert(!surface_points_.empty());
         row inner_point_(zero, dimension_);
-        {
-            for (point_iterator const & point_ : surface_points_) {
-                size_type i = 0;
-                for (value_type const & x : *point_) {
-                    inner_point_[i] += x;
-                    ++i;
-                }
+        for (point_iterator const & point_ : surface_points_) {
+            auto x = std::cbegin(*point_);
+            for (size_type i = 0; i < dimension_; ++i) {
+                inner_point_[i] += *x;
+                ++x;
             }
-            inner_point_ /= value_type(surface_points_.size());
         }
+        inner_point_ /= value_type(surface_points_.size());
         facet const & first_ = facets_.front();
         if (!(first_.distance(inner_point_) < zero)) {
             return false; // inner point is not on negative side of the first facet, therefore structure is not convex
         }
         row ray_(zero, dimension_);
         for (point_iterator const & vertex : first_.vertices_) {
-            size_type i = 0;
-            for (value_type const & x : *vertex) {
-                ray_[i] += x;
-                ++i;
+            auto x = std::cbegin(*vertex);
+            for (size_type i = 0; i < dimension_; ++i) {
+                ray_[i] += *x;
+                ++x;
             }
         }
         ray_ /= value_type(dimension_);
@@ -796,7 +792,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
         if (!(zero < std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero))) {
             return false;
         }
-        matrix g_(dimension_); // storage d * (d + 1) for Gaussian elimination with partial pivoting
+        matrix g_(dimension_); // storage (d * (d + 1)) for Gaussian elimination with partial pivoting
         for (row & row_ : g_) {
             row_.resize(dimension_ + 1);
         }
@@ -813,7 +809,9 @@ public : // largest possible simplex heuristic, convex hull algorithm
             if (!(zero < denominator_)) { // ray is parallel to the plane or directed away from the plane
                 continue;
             }
-            intersection_point_ = inner_point_ - ray_ * (numerator_ / denominator_);
+            intersection_point_ = ray_;
+            intersection_point_ *= -(numerator_ / denominator_);
+            intersection_point_ += inner_point_;
             for (size_type v = 0; v < dimension_; ++v) {
                 auto beg = std::cbegin(*facet_.vertices_[v]);
                 for (size_type r = 0; r < dimension_; ++r) {
@@ -839,8 +837,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
             for (size_type r = 0; r < dimension_; ++r) { // shift by half of bounding box main diagonal length in perpendicular to facet direction
                 g_[r] += centroid_[r];
             }
-            // Gaussian elimination
-            for (size_type i = 0; i < dimension_; ++i) {
+            for (size_type i = 0; i < dimension_; ++i) { // Gaussian elimination
                 row & gi_ = g_[i];
                 value_type max_ = abs(gi_[i]);
                 size_type pivot = i;
@@ -854,7 +851,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         }
                     }
                 }
-                assert(_eps < max_); // vertex cannot match origin
+                assert(_eps < max_); // vertex cannot match the origin after above transformations
                 if (pivot != i) {
                     gi_.swap(g_[pivot]);
                 }
@@ -880,7 +877,7 @@ public : // largest possible simplex heuristic, convex hull algorithm
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
                     value_type const & gii_ = gi_[i];
-                    assert(_eps < abs(gii_)); // vertex cannot match origin
+                    assert(_eps < abs(gii_)); // vertex cannot match the origin
                     xi_ /= gii_;
                     if ((xi_ < zero) || (one < xi_)) {
                         in_range_ = false; // barycentric coordinate does not lie in [0;1] interval => miss
