@@ -53,18 +53,19 @@ struct quick_hull
     using difference_type = std::intptr_t;
 
     using point = typename std::iterator_traits< point_iterator >::value_type;
-    using value_type = typename point::value_type;
+    using value_type = std::decay_t< decltype(*std::cbegin(*std::declval< point_iterator >())) >;
 
     size_type const dimension_;
     value_type const eps;
 
-private :
-
     value_type const zero = value_type(0);
     value_type const one = value_type(1);
 
-    using row = std::valarray< value_type >;
-    using matrix = std::vector< row >;
+    using vector = std::valarray< value_type >;
+
+private :
+
+    using matrix = std::vector< vector >;
 
     matrix matrix_;
     matrix shadow_matrix_;
@@ -110,7 +111,7 @@ public :
         point_deque coplanar_; // coplanar points, for resulting convex hull it is guaranted that they lies within the facet or on a facet's ridge (in later case these points can be non-unique)
 
         // equation of hyperplane supported the facet
-        row normal_; // components of normalized normal vector
+        vector normal_; // components of normalized normal vector
         value_type D; // distance from the origin to the hyperplane
 
         void
@@ -188,7 +189,7 @@ private :
     transpose() // transpose shadow matrix to cheaper filling columns with 1-s
     {
         for (size_type r = 0; r < dimension_; ++r) {
-            row & row_ = shadow_matrix_[r];
+            vector & row_ = shadow_matrix_[r];
             for (size_type c = 1 + r; c < dimension_; ++c) {
                 using std::swap;
                 swap(shadow_matrix_[c][r], row_[c]);
@@ -197,16 +198,10 @@ private :
     }
 
     void
-    restore_matrix() // reload matrix from storage
-    {
-        matrix_ = shadow_matrix_;
-    }
-
-    void
-    restore_matrix(size_type const _identity) // load matrix from storage and replace _identity column with 1-s
+    restore_matrix(size_type const _identity) // load matrix from storage, but replace _identity column with 1-s
     {
         for (size_type c = 0; c < dimension_; ++c) {
-            row & col_ = matrix_[c];
+            vector & col_ = matrix_[c];
             if (c == _identity) {
                 col_ = one;
             } else {
@@ -220,8 +215,8 @@ private :
     {
         assert(_size < dimension_);
         for (size_type r = 0; r < _size; ++r) {
-            row & lhs_ = shadow_matrix_[r];
-            row const & row_ = matrix_[r];
+            vector & lhs_ = shadow_matrix_[r];
+            vector const & row_ = matrix_[r];
             for (size_type c = 0; c < _size; ++c) {
                 lhs_[c] = std::inner_product(std::cbegin(row_), std::cend(row_), std::cbegin(matrix_[c]), zero);
             }
@@ -235,7 +230,7 @@ private :
         assert(0 < _dimension);
         value_type det_ = one;
         for (size_type i = 0; i < _dimension; ++i) {
-            row & ri_ = _matrix[i];
+            vector & ri_ = _matrix[i];
             using std::abs;
             value_type max_ = abs(ri_[i]);
             size_type pivot = i;
@@ -262,15 +257,15 @@ private :
                 _matrix[j][i] /= dia_;
             }
             for (size_type a = 1 + i; a < _dimension; ++a) {
-                row & a_ = minor_[a - 1];
+                vector & a_ = minor_[a - 1];
                 value_type const & ai_ = _matrix[a][i];
                 for (size_type b = 1 + i; b < _dimension; ++b) {
                     a_[b - 1] = ai_ * ri_[b];
                 }
             }
             for (size_type a = 1 + i; a < _dimension; ++a) {
-                row const & a_ = minor_[a - 1];
-                row & ra_ = _matrix[a];
+                vector const & a_ = minor_[a - 1];
+                vector & ra_ = _matrix[a];
                 for (size_type b = 1 + i; b < _dimension; ++b) {
                     ra_[b] -= a_[b - 1];
                 }
@@ -292,7 +287,7 @@ private :
             std::copy_n(std::cbegin(*_facet.vertices_[r]), dimension_, std::begin(shadow_matrix_[r]));
         }
         transpose();
-        restore_matrix();
+        matrix_ = shadow_matrix_;
         _facet.D = -det();
         value_type N = zero;
         for (size_type i = 0; i < dimension_; ++i) {
@@ -308,20 +303,20 @@ private :
     }
 
     bool
-    orthonormalize(point_array const & _affine_space, size_type const _rank, row const & _origin)
+    orthonormalize(point_array const & _affine_space, size_type const _rank, vector const & _origin)
     {
         assert(!(dimension_ < _rank));
         assert(!(_affine_space.size() < _rank));
         auto vertex = std::begin(_affine_space);
         for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
-            row & row_ = shadow_matrix_[r];
+            vector & row_ = shadow_matrix_[r];
             std::copy_n(std::cbegin(**vertex), dimension_, std::begin(row_));
             row_ -= _origin;
             ++vertex;
         }
         for (size_type i = 0; i < _rank; ++i) { // Householder transformation
             value_type norm_ = zero;
-            row & qri_ = shadow_matrix_[i]; // shadow_matrix_ is packed QR after all
+            vector & qri_ = shadow_matrix_[i]; // shadow_matrix_ is packed QR after all
             for (size_type j = i; j < dimension_; ++j) {
                 value_type const & qrij_ = qri_[j];
                 norm_ += qrij_ * qrij_;
@@ -347,7 +342,7 @@ private :
                 qri_[k] *= factor_;
             }
             for (size_type j = i + 1; j < _rank; ++j) {
-                row & qrj_ = shadow_matrix_[j];
+                vector & qrj_ = shadow_matrix_[j];
                 value_type s_ = zero;
                 for (size_type k = i; k < dimension_; ++k) {
                     s_ += qri_[k] * qrj_[k];
@@ -365,13 +360,13 @@ private :
     {
         assert(!(dimension_ < _rank));
         for (size_type i = 0; i < _rank; ++i) {
-            row & qi_ = matrix_[i]; // matrix_ is Q after all
+            vector & qi_ = matrix_[i]; // matrix_ is Q after all
             qi_ = zero;
             qi_[i] = one;
             size_type j = _rank;
             while (0 < j) {
                 --j;
-                row & qrj_ = shadow_matrix_[j]; // containing packed QR
+                vector & qrj_ = shadow_matrix_[j]; // containing packed QR
                 value_type s_ = zero;
                 for (size_type k = j; k < dimension_; ++k) {
                     s_ += qrj_[k] * qi_[k];
@@ -389,14 +384,14 @@ private :
         assert(!_to.empty());
         size_type const rank_ = _to.size() - 1;
         assert(rank_ < dimension_);
-        row & origin_ = matrix_[rank_];
+        vector & origin_ = matrix_[rank_];
         std::copy_n(std::cbegin(*_to.back()), dimension_, std::begin(origin_));
         if (!orthonormalize(_to, rank_, origin_)) {
             return false;
         }
         forward_transformation(rank_);
-        row & projection_ = minor_.back();
-        row & apex_ = minor_.front();
+        vector & projection_ = minor_.back();
+        vector & apex_ = minor_.front();
         value_type distance_ = zero;
         auto furthest = std::cend(_from);
         for (auto it = std::cbegin(_from); it != std::cend(_from); ++it) {
@@ -404,7 +399,7 @@ private :
             apex_ -= origin_; // turn translated space into vector space
             projection_ = apex_; // project onto orthogonal subspace
             for (size_type i = 0; i < rank_; ++i) {
-                row const & qi_ = matrix_[i];
+                vector const & qi_ = matrix_[i];
                 projection_ -= std::inner_product(std::cbegin(apex_), std::cend(apex_), std::cbegin(qi_), zero) * qi_;
             }
             projection_ *= projection_;
@@ -631,11 +626,11 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
         assert(!_vertices.empty());
         size_type const rank_ = _vertices.size() - 1;
         assert(!(dimension_ < rank_));
-        row & origin_ = minor_.back();
+        vector & origin_ = minor_.back();
         std::copy_n(std::cbegin(*_vertices.back()), dimension_, std::begin(origin_));
         auto vertex = std::cbegin(_vertices);
         for (size_type r = 0; r < rank_; ++r) { // affine space -> vector space
-            row & row_ = matrix_[r];
+            vector & row_ = matrix_[r];
             std::copy_n(std::cbegin(**vertex), dimension_, std::begin(row_));
             row_ -= origin_;
             ++vertex;
@@ -766,7 +761,7 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
             }
         }
         assert(!surface_points_.empty());
-        row inner_point_(zero, dimension_);
+        vector inner_point_(zero, dimension_);
         for (point_iterator const & point_ : surface_points_) {
             auto x = std::cbegin(*point_);
             for (size_type i = 0; i < dimension_; ++i) {
@@ -779,7 +774,7 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
         if (!(first_.distance(inner_point_) < zero)) {
             return false; // inner point is not on negative side of the first facet, therefore structure is not convex
         }
-        row ray_(zero, dimension_);
+        vector ray_(zero, dimension_);
         for (point_iterator const & vertex : first_.vertices_) {
             auto x = std::cbegin(*vertex);
             for (size_type i = 0; i < dimension_; ++i) {
@@ -793,11 +788,11 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
             return false;
         }
         matrix g_(dimension_); // storage (d * (d + 1)) for Gaussian elimination with partial pivoting
-        for (row & row_ : g_) {
+        for (vector & row_ : g_) {
             row_.resize(dimension_ + 1);
         }
-        row intersection_point_(zero, dimension_);
-        row centroid_(zero, dimension_);
+        vector intersection_point_(zero, dimension_);
+        vector centroid_(zero, dimension_);
         for (size_type f = 1; f < facets_count_; ++f) {
             using std::abs;
             facet const & facet_ = facets_[f];
@@ -820,13 +815,13 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
                 }
             }
             for (size_type r = 0; r < dimension_; ++r) {
-                row & gr_ = g_[r];
+                vector & gr_ = g_[r];
                 gr_[dimension_] = intersection_point_[r];
                 centroid_[r] = gr_.sum();
             }
             centroid_ /= value_type(dimension_ + 1);
             for (size_type r = 0; r < dimension_; ++r) {
-                row & gr_ = g_[r];
+                vector & gr_ = g_[r];
                 gr_ -= centroid_[r];
                 centroid_[r] = gr_.max() - gr_.min();
             }
@@ -838,7 +833,7 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
                 g_[r] += centroid_[r];
             }
             for (size_type i = 0; i < dimension_; ++i) { // Gaussian elimination
-                row & gi_ = g_[i];
+                vector & gi_ = g_[i];
                 value_type max_ = abs(gi_[i]);
                 size_type pivot = i;
                 {
@@ -857,7 +852,7 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
                 }
                 value_type & gii_ = gi_[i];
                 for (size_type j = i + 1; j < dimension_; ++j) {
-                    row & gj_ = g_[j];
+                    vector & gj_ = g_[j];
                     value_type & gji_ = gj_[i];
                     gji_ /= gii_;
                     for (size_type k = i + 1; k <= dimension_; ++k) {
@@ -871,7 +866,7 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
                 size_type i = dimension_;
                 while (0 < i) {
                     --i;
-                    row & gi_ = g_[i];
+                    vector & gi_ = g_[i];
                     value_type & xi_ = gi_[dimension_];
                     for (size_type j = i + 1; j < dimension_; ++j) {
                         xi_ -= gi_[j] * g_[j][dimension_];
