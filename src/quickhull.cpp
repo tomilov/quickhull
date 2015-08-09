@@ -160,8 +160,10 @@ struct qh
     initial_simplex initial_simplex_;
     facets facets_;
 
+    mutable bool f = false;
+
     void
-    init(std::ostream & _gnuplot)
+    init()
     {
         auto p = std::begin(points_);
         auto const pend = std::end(points_);
@@ -170,9 +172,7 @@ struct qh
             ++p;
         }
         internal_set_.sort(point_iterator_less{});
-        _gnuplot << "set view equal xyz\n";
-        _gnuplot << "set autoscale\n";
-        _gnuplot << "set key left\n";
+        f = false;
     }
 
     bool
@@ -241,6 +241,15 @@ struct qh
             return false;
         }
         _gnuplot << "clear\n";
+        _gnuplot << "set view equal xyz\n";
+        _gnuplot << "set autoscale\n";
+        _gnuplot << "set key left\n";
+        if (f) {
+            _gnuplot << "set xrange restore; set yrange restore; set zrange restore\n";
+        } else {
+            f = true;
+            _gnuplot << "set xrange [] writeback; set yrange [] writeback; set zrange [] writeback;\n";
+        }
         _gnuplot << "set title \'Points count is " << internal_set_.size() << "\'\n";
         if (dimension_ == 2) {
             _gnuplot << "plot";
@@ -398,15 +407,8 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     std::ostream & gnuplot_ = std::cout;
     gnuplot_.sync_with_stdio(false);
     //out_.rdbuf()->pubsetbuf(nullptr, 0);
-    qh_.init(gnuplot_);
-    bool f = false;
+    qh_.init();
     while (qh_(true)) {
-        if (f) {
-            gnuplot_ << "set xrange restore; set yrange restore; set zrange restore\n";
-        } else {
-            f = true;
-            gnuplot_ << "set xrange [] writeback; set yrange [] writeback; set zrange [] writeback;\n";
-        }
         if (!qh_.output(gnuplot_)) {
             break;
         }

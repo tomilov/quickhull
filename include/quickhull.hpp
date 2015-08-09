@@ -730,6 +730,12 @@ public :
             }
             newfacets_.clear();
             outside_.clear();
+            static int i = 0;
+            if (++i % 50 == 0) {
+            }
+            if (!check()) {
+                asm volatile ("nop");
+            }
         }
         assert(ranking_meta_.empty());
         { // compactify
@@ -766,7 +772,8 @@ public :
                 if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoid roundoff error
                     for (size_type v = 0; v < dimension_; ++v) {
                         if (neighbour_.neighbours_[v] == f) { // vertex v of neigbour_ facet is opposite to facet_
-                            if (_eps < facet_.distance(*neighbour_.vertices_[v])) {
+                            value_type const distance_ = facet_.distance(*neighbour_.vertices_[v]);
+                            if (_eps < distance_) {
                                 return false; // facet is not locally convex at ridge, common for facet_ and neighbour_ facets
                             } else {
                                 break;
@@ -787,8 +794,11 @@ public :
         }
         inner_point_ /= value_type(surface_points_.size());
         facet const & first_ = facets_.front();
-        if (!(first_.distance(inner_point_) < zero)) {
-            return false; // inner point is not on negative side of the first facet, therefore structure is not convex
+        {
+            value_type const distance_ = first_.distance(inner_point_);
+            if (!(distance_ < zero)) {
+                return false; // inner point is not on negative side of the first facet, therefore structure is not convex
+            }
         }
         vector ray_(zero, dimension_);
         for (point_iterator_type const & vertex : first_.vertices_) {
@@ -800,8 +810,11 @@ public :
         }
         ray_ /= value_type(dimension_);
         ray_ -= inner_point_;
-        if (!(zero < std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero))) {
-            return false;
+        {
+            value_type const dot_product_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero);
+            if (!(zero < dot_product_)) {
+                return false;
+            }
         }
         matrix g_(dimension_); // storage (d * (d + 1)) for Gaussian elimination with partial pivoting
         for (vector & row_ : g_) {
