@@ -50,7 +50,7 @@ struct quick_hull
     static_assert(std::is_base_of< std::random_access_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >::value);
 
     using size_type = std::size_t;
-    using difference_type = std::intptr_t;
+    using difference_type = std::ptrdiff_t;
 
     using point = typename std::iterator_traits< point_iterator >::value_type;
     using value_type = std::decay_t< decltype(*std::cbegin(*std::declval< point_iterator >())) >;

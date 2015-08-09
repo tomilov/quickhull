@@ -10,17 +10,87 @@
 #include <numeric>
 #include <valarray>
 #include <vector>
+#include <forward_list>
+#include <iterator>
+#include <utility>
 
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
 #include <cassert>
+#include <cstddef>
 
 #ifdef __linux__
 #define RED(str) __extension__ "\e[1;31m" str "\e[0m"
 #else
 #define RED(str) str
 #endif
+
+namespace
+{
+
+template< typename iterator >
+struct indexed_iterator
+{
+
+    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< iterator >::iterator_category >::value);
+    using iterator_category = std::random_access_iterator_tag; // not really true, but below machinery is enough for quickhull algorithm
+
+    using value_type        = typename std::iterator_traits< iterator >::value_type;
+    using difference_type   = typename std::iterator_traits< iterator >::difference_type;
+    using pointer           = typename std::iterator_traits< iterator >::pointer;
+    using reference         = typename std::iterator_traits< iterator >::reference;
+
+    iterator base;
+    std::size_t index;
+
+    indexed_iterator &
+    operator ++ ()
+    {
+        ++base; ++index;
+        return *this;
+    }
+
+    bool
+    operator < (indexed_iterator const & r) const
+    {
+        if (operator == (r)) {
+            return false;
+        }
+        return (index < r.index);
+    }
+
+    difference_type
+    operator - (indexed_iterator const & r) const
+    {
+        if (index < r.index) {
+            return -static_cast< difference_type >(r.index - index);
+        } else {
+            return +static_cast< difference_type >(index - r.index);
+        }
+    }
+
+    reference
+    operator * () const
+    {
+        return *base;
+    }
+
+    bool
+    operator == (indexed_iterator const & r) const
+    {
+        return (base == r.base);
+    }
+
+    bool
+    operator != (indexed_iterator const & r) const
+    {
+        return !(base == r.base);
+    }
+
+};
+
+}
 
 int
 main(int argc, char * argv[])
@@ -77,7 +147,11 @@ main(int argc, char * argv[])
     }
     using value_type = double;
     using point = std::valarray< value_type >;
+#if 0
     using points = std::vector< point >;
+#else
+    using points = std::forward_list< point >;
+#endif
     size_type count_ = 0;
     {
         iss_.str(line_);
@@ -94,7 +168,14 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     points points_(count_);
-    auto p = std::begin(points_);
+    using iterator = typename points::iterator;
+    using point_iterator = std::conditional_t< (std::is_base_of< std::random_access_iterator_tag, iterator >{}), iterator, indexed_iterator< iterator > >;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-field-initializers"
+    auto const pbeg = point_iterator{std::begin(points_)};
+    auto const pend = point_iterator{std::end(points_)};
+#pragma clang diagnostic pop
+    auto p = pbeg;
     for (size_type i = 0; i < count_; ++i) {
         if (!std::getline(in_, line_)) {
             out_ << std::flush;
@@ -116,11 +197,11 @@ main(int argc, char * argv[])
             iss_.clear();
         }
     }
-    assert(p == std::end(points_));
+    assert(p == pend);
     //out_.rdbuf()->pubsetbuf(nullptr, 0);
     out_ << "#D = " << dimension_ << '\n';
     out_ << "#N = " << count_ << '\n';
-    using quick_hull_type = quick_hull< typename points::const_iterator >;
+    using quick_hull_type = quick_hull< point_iterator >;
 #if 0
     using std::sqrt;
     value_type const eps = sqrt(std::numeric_limits< value_type >::epsilon()); // use relaxed constraints for input, which supposedly should produce a plenty of complanar facets, like 'rbox D3 27 M3,4'
@@ -135,7 +216,7 @@ main(int argc, char * argv[])
         using std::chrono::steady_clock;
         {
             steady_clock::time_point const start = steady_clock::now();
-            initial_simplex_ = quick_hull_.create_initial_simplex(std::cbegin(points_), std::cend(points_));
+            initial_simplex_ = quick_hull_.create_initial_simplex(pbeg, pend);
             size_type const basis_size_ = initial_simplex_.size();
             steady_clock::time_point const end = steady_clock::now();
             out_ << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
@@ -195,7 +276,7 @@ main(int argc, char * argv[])
         gnuplot_ << '\n';
     }
     gnuplot_ << "e\n";
-    p = std::begin(points_);
+    p = pbeg;
     for (size_type i = 0; i < count_; ++i) {
         point const & point_ = *p;
         ++p;
@@ -204,9 +285,9 @@ main(int argc, char * argv[])
         }
         gnuplot_ << '\n';
     }
-    assert(p == std::end(points_));
+    assert(p == pend);
     gnuplot_ << "e\n";
-    p = std::begin(points_);
+    p = pbeg;
     for (size_type i = 0; i < count_; ++i) {
         point const & point_ = *p;
         ++p;
@@ -215,7 +296,7 @@ main(int argc, char * argv[])
         }
         gnuplot_ << i << '\n';
     }
-    assert(p == std::end(points_));
+    assert(p == pend);
     gnuplot_ << "e\n";
     for (size_type i = 0; i < facets_count_; ++i) {
         auto const & facet_ = facets_[i];
