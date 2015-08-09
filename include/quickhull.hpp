@@ -47,7 +47,7 @@ template< typename point_iterator >
 struct quick_hull
 {
 
-    static_assert(std::is_base_of< std::random_access_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >::value);
+    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >::value);
 
     using size_type = std::size_t;
     using difference_type = std::intptr_t;
@@ -601,12 +601,12 @@ private :
         size_type ridge_hash_ = 0;
         for (size_type v = 0; v < dimension_; ++v) {
             if (v != _skip) {
-                ridge_hash_ ^= point_hash_(facet_.vertices_[v] - _apex);
+                ridge_hash_ ^= point_hash_(std::distance(facet_.vertices_[v], _apex));
             }
         }
         for (size_type against_ = 0; against_ < dimension_; ++against_) {
             if (against_ != _skip) { // neighbouring facet against _apex is known atm
-                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_(facet_.vertices_[against_] - _apex))});
+                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_(std::distance(facet_.vertices_[against_], _apex)))});
                 if (!position.second) {
                     ridge const & ridge_ = *position.first;
                     ridge_.facet_.neighbours_[ridge_.against_] = _f;
@@ -737,10 +737,11 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
 
     // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
     // Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
+    template< typename compare = std::less< point_iterator > >
     bool
-    check(value_type const & _eps) const
+    check(value_type const & _eps, compare && _compare = compare{}) const
     {
-        std::set< point_iterator > surface_points_;
+        std::set< point_iterator, compare > surface_points_{std::forward< compare >(_compare)};
         size_type const facets_count_ = facets_.size();
         for (size_type f = 0; f < facets_count_; ++f) { // check whether the inner point is inside relative to each hull facet or not
             facet const & facet_ = facets_[f];
@@ -823,7 +824,8 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
             for (size_type r = 0; r < dimension_; ++r) {
                 vector & gr_ = g_[r];
                 gr_ -= centroid_[r];
-                centroid_[r] = gr_.max() - gr_.min();
+                auto const minmax = std::minmax_element(std::cbegin(gr_), std::cend(gr_));
+                centroid_[r] = *minmax.second - *minmax.first;
             }
             centroid_ *= centroid_;
             using std::sqrt;
@@ -887,10 +889,11 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
         return true;
     }
 
+    template< typename compare = std::less< point_iterator > >
     bool
-    check() const
+    check(compare && _compare = compare{}) const
     {
-        return check(eps);
+        return check(eps, std::forward< compare >(_compare));
     }
 
 };

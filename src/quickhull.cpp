@@ -10,6 +10,7 @@
 #include <numeric>
 #include <valarray>
 #include <vector>
+#include <list>
 
 #include <cmath>
 #include <cstdlib>
@@ -77,7 +78,12 @@ main(int argc, char * argv[])
     }
     using value_type = double;
     using point = std::valarray< value_type >;
+#if 0
     using points = std::vector< point >;
+#else
+    using points = std::list< point >;
+#endif
+    using point_iterator = typename points::const_iterator;
     size_type count_ = 0;
     {
         iss_.str(line_);
@@ -94,13 +100,15 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     points points_(count_);
+    auto p = std::begin(points_);
     for (size_type i = 0; i < count_; ++i) {
         if (!std::getline(in_, line_)) {
             out_ << std::flush;
             err_ << "io: line count error" << std::endl;
             return EXIT_FAILURE;
         }
-        point & point_ = points_[i];
+        point & point_ = *p;
+        ++p;
         point_.resize(dimension_);
         {
             iss_.str(line_);
@@ -114,6 +122,7 @@ main(int argc, char * argv[])
             iss_.clear();
         }
     }
+    assert(p == std::end(points_));
     //out_.rdbuf()->pubsetbuf(nullptr, 0);
     out_ << "#D = " << dimension_ << '\n';
     out_ << "#N = " << count_ << '\n';
@@ -147,7 +156,8 @@ main(int argc, char * argv[])
             quick_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
             out_ << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
-            if (!quick_hull_.check()) {
+            auto const pbeg = std::cbegin(points_);
+            if (!quick_hull_.check([&] (point_iterator const & _lhs, point_iterator const & _rhs) -> bool { return (std::distance(_lhs, pbeg) < std::distance(_rhs, pbeg)); })) {
                 out_ << std::flush;
                 err_ << RED("resulting structure is not valid convex polytope") << std::endl;
                 return EXIT_FAILURE;
@@ -184,29 +194,35 @@ main(int argc, char * argv[])
                     ", '-' with points notitle pointtype 6 pointsize 1.5 linetype 4";
     }
     gnuplot_ << ";\n";
-    for (auto const p : initial_simplex_) {
+    for (auto const v : initial_simplex_) {
+        point const & point_ = *v;
+        for (value_type const & coordinate_ : point_) {
+            gnuplot_ << coordinate_ << ' ';
+        }
+        gnuplot_ << '\n';
+    }
+    gnuplot_ << "e\n";
+    p = std::begin(points_);
+    for (size_type i = 0; i < count_; ++i) {
         point const & point_ = *p;
+        ++p;
         for (value_type const & coordinate_ : point_) {
             gnuplot_ << coordinate_ << ' ';
         }
         gnuplot_ << '\n';
     }
+    assert(p == std::end(points_));
     gnuplot_ << "e\n";
+    p = std::begin(points_);
     for (size_type i = 0; i < count_; ++i) {
-        point const & point_ = points_[i];
-        for (value_type const & coordinate_ : point_) {
-            gnuplot_ << coordinate_ << ' ';
-        }
-        gnuplot_ << '\n';
-    }
-    gnuplot_ << "e\n";
-    for (size_type i = 0; i < count_; ++i) {
-        point const & point_ = points_[i];
+        point const & point_ = *p;
+        ++p;
         for (value_type const & coordinate_ : point_) {
             gnuplot_ << coordinate_ << ' ';
         }
         gnuplot_ << i << '\n';
     }
+    assert(p == std::end(points_));
     gnuplot_ << "e\n";
     for (size_type i = 0; i < facets_count_; ++i) {
         auto const & facet_ = facets_[i];
@@ -224,8 +240,8 @@ main(int argc, char * argv[])
         }
         gnuplot_ << "\n";
         gnuplot_ << "e\n";
-        for (auto const p : facet_.coplanar_) {
-            for (value_type const & coordinate_ : *p) {
+        for (auto const v : facet_.coplanar_) {
+            for (value_type const & coordinate_ : *v) {
                 gnuplot_ << coordinate_ << ' ';
             }
             gnuplot_ << '\n';
