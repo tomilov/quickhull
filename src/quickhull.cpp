@@ -10,7 +10,6 @@
 #include <numeric>
 #include <valarray>
 #include <vector>
-#include <list>
 
 #include <cmath>
 #include <cstdlib>
@@ -78,12 +77,7 @@ main(int argc, char * argv[])
     }
     using value_type = double;
     using point = std::valarray< value_type >;
-#if 0
     using points = std::vector< point >;
-#else
-    using points = std::list< point >;
-#endif
-    using point_iterator = typename points::const_iterator;
     size_type count_ = 0;
     {
         iss_.str(line_);
@@ -156,8 +150,7 @@ main(int argc, char * argv[])
             quick_hull_.create_convex_hull();
             steady_clock::time_point const end = steady_clock::now();
             out_ << "#quickhull time = " << duration_cast< microseconds >(end - start).count() << "us\n";
-            auto const pbeg = std::cbegin(points_);
-            if (!quick_hull_.check([&] (point_iterator const & _lhs, point_iterator const & _rhs) -> bool { return (std::distance(_lhs, pbeg) < std::distance(_rhs, pbeg)); })) {
+            if (!quick_hull_.check()) {
                 out_ << std::flush;
                 err_ << RED("resulting structure is not valid convex polytope") << std::endl;
                 return EXIT_FAILURE;
