@@ -13,10 +13,14 @@
 #include <forward_list>
 #include <iterator>
 #include <utility>
+#include <algorithm>
+#include <limits>
+#include <memory>
 
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
+#include <cstdint>
 #include <cassert>
 #include <cstddef>
 
@@ -160,7 +164,7 @@ struct qh
     initial_simplex initial_simplex_;
     facets facets_;
 
-    mutable bool f = false;
+    mutable bool f = true;
 
     void
     init()
@@ -172,7 +176,7 @@ struct qh
             ++p;
         }
         internal_set_.sort(point_iterator_less{});
-        f = false;
+        f = true;
     }
 
     bool
@@ -236,34 +240,41 @@ struct qh
     output(std::ostream & _gnuplot) const
     {
         if (3 < dimension_) {
-            log_ << "dimensionality value (" << dimension_
-                 << ") is out of supported range: cannot generate output" << std::endl;
+            log_ << "dimensionality value " << dimension_
+                 << " is out of supported range: cannot generate output for this" << std::endl;
             return false;
         }
-        _gnuplot << "clear\n";
-        _gnuplot << "set view equal xyz\n";
-        _gnuplot << "set autoscale\n";
-        _gnuplot << "set key left\n";
         if (f) {
-            _gnuplot << "set xrange restore; set yrange restore; set zrange restore\n";
+            f = false;
+            _gnuplot << "clear\n"
+                        "set xrange [] writeback\n"
+                        "set yrange [] writeback\n"
+                        "set zrange [] writeback\n";
         } else {
-            f = true;
-            _gnuplot << "set xrange [] writeback; set yrange [] writeback; set zrange [] writeback;\n";
+            _gnuplot << "pause mouse\n\n"
+                        "clear\n"
+                        "set xrange restore\n"
+                        "set yrange restore\n"
+                        "set zrange restore\n";
         }
+        _gnuplot << "clear\n"
+                    "set view equal xyz\n"
+                    "set autoscale\n"
+                    "set key left\n";
         _gnuplot << "set title \'Points count is " << internal_set_.size() << "\'\n";
         if (dimension_ == 2) {
             _gnuplot << "plot";
         } else if (dimension_ == 3) {
             _gnuplot << "splot";
-        } else {
-            assert(false);
         }
         _gnuplot << " '-' with points notitle pointtype 4 pointsize 1.5 linetype 1"
                     ", '-' with points notitle"
                     ", '-' with labels offset character 0, character 1 notitle";
-        for (auto i = std::distance(std::cbegin(facets_), std::cend(facets_)); 0 < i; --i) {
-            _gnuplot << ", '-' with lines notitle"
-                        ", '-' with points notitle pointtype 6 pointsize 1.5 linetype 4";
+        for (auto const & facet_ : facets_) {
+            _gnuplot << ", '-' with lines notitle";
+            if (!facet_.coplanar_.empty()) {
+                _gnuplot << ", '-' with points notitle pointtype 6 pointsize 1.5 linetype 4";
+            }
         }
         _gnuplot << ";\n";
         {
@@ -304,21 +315,21 @@ struct qh
                 }
                 _gnuplot << '\n';
             }
-            point const & first_vertex_ = *vertices_.front();
-            for (value_type const & coordinate_ : first_vertex_) {
+            for (value_type const & coordinate_ : *vertices_.front()) {
                 _gnuplot << coordinate_ << ' ';
             }
-            _gnuplot << "\n";
-            _gnuplot << "e\n";
-            for (auto const v : facet_.coplanar_) {
-                for (value_type const & coordinate_ : *v) {
-                    _gnuplot << coordinate_ << ' ';
+            _gnuplot << "\n"
+                     << "e\n";
+            if (!facet_.coplanar_.empty()) {
+                for (auto const v : facet_.coplanar_) {
+                    for (value_type const & coordinate_ : *v) {
+                        _gnuplot << coordinate_ << ' ';
+                    }
+                    _gnuplot << '\n';
                 }
-                _gnuplot << '\n';
+                _gnuplot << "e\n";
             }
-            _gnuplot << "e\n";
         }
-        _gnuplot << "pause mouse\n";
         return true;
     }
 
@@ -327,18 +338,21 @@ struct qh
     operator << (std::ostream & _gnuplot, qh const & _qh)
     {
         if (!_qh.output(_gnuplot)) {
-            // exception?
+            throw std::runtime_error("can't generate output due to invalid conditions");
         }
         return _gnuplot;
     }
 
     bool
-    slice_layer()
+    slice_layer(bool const _coplanar = false)
     {
         assert(!facets_.empty());
         std::set< point_iterator_type, point_iterator_less > surface_points_;
         for (auto const & facet_ : facets_) {
             surface_points_.insert(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
+            if (_coplanar) {
+                surface_points_.insert(std::cbegin(facet_.coplanar_), std::cend(facet_.coplanar_));
+            }
         }
         assert(!surface_points_.empty());
         log_ << "count of points at convex hull is " << surface_points_.size() << std::endl;
@@ -406,13 +420,16 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
 
     std::ostream & gnuplot_ = std::cout;
     gnuplot_.sync_with_stdio(false);
-    //out_.rdbuf()->pubsetbuf(nullptr, 0);
+    //gnuplot_.rdbuf()->pubsetbuf(nullptr, 0);
     qh_.init();
     while (qh_(true)) {
-        if (!qh_.output(gnuplot_)) {
+        if (3 < qh_.dimension_) {
             break;
         }
-        if (!qh_.slice_layer()) {
+        if (!(gnuplot_ << qh_)) {
+            break;
+        }
+        if (!qh_.slice_layer(true)) {
             break;
         }
     }

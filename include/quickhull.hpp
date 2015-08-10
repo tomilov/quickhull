@@ -730,12 +730,6 @@ public :
             }
             newfacets_.clear();
             outside_.clear();
-            static int i = 0;
-            if (++i % 50 == 0) {
-            }
-            if (!check()) {
-                asm volatile ("nop");
-            }
         }
         assert(ranking_meta_.empty());
         { // compactify
