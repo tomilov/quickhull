@@ -186,7 +186,7 @@ public :
 private :
 
     void
-    transpose() // transpose shadow matrix to cheaper filling columns with 1-s
+    matrix_transpose() // transpose shadow matrix to cheaper filling columns with 1-s
     {
         for (size_type r = 0; r < dimension_; ++r) {
             vector & row_ = shadow_matrix_[r];
@@ -198,7 +198,7 @@ private :
     }
 
     void
-    restore_matrix(size_type const _identity) // load matrix from storage, but replace _identity column with 1-s
+    matrix_restore(size_type const _identity) // load matrix from storage, but replace _identity column with 1-s
     {
         for (size_type c = 0; c < dimension_; ++c) {
             vector & col_ = matrix_[c];
@@ -211,7 +211,7 @@ private :
     }
 
     void
-    square_matrix(size_type const _size) // matrix_ = shadow_matrix_ * transposed shadow_matrix_
+    matrix_sqr(size_type const _size) // matrix_ = shadow_matrix_ * transposed shadow_matrix_
     {
         assert(_size < dimension_);
         for (size_type r = 0; r < _size; ++r) {
@@ -286,12 +286,12 @@ private :
         for (size_type r = 0; r < dimension_; ++r) {
             std::copy_n(std::cbegin(*_facet.vertices_[r]), dimension_, std::begin(shadow_matrix_[r]));
         }
-        transpose();
+        matrix_transpose();
         matrix_ = shadow_matrix_;
         _facet.D = -det();
         value_type N = zero;
         for (size_type i = 0; i < dimension_; ++i) {
-            restore_matrix(i);
+            matrix_restore(i);
             value_type & n = _facet.normal_[i];
             n = det();
             N += n * n;
@@ -638,7 +638,7 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
         if (rank_ == dimension_) { // oriented hypervolume
             return det();
         } else { // non-oriented _rank-dimensional measure
-            square_matrix(rank_);
+            matrix_sqr(rank_);
             using std::sqrt;
             return sqrt(det(shadow_matrix_, rank_));
         }
