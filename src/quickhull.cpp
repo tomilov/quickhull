@@ -26,74 +26,8 @@
 #define RED(str) str
 #endif
 
-namespace
-{
-
-template< typename iterator >
-struct indexed_iterator
-{
-
-    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< iterator >::iterator_category >::value);
-    using iterator_category = std::random_access_iterator_tag; // not really true, but below machinery is enough for quickhull algorithm
-
-    using value_type        = typename std::iterator_traits< iterator >::value_type;
-    using difference_type   = typename std::iterator_traits< iterator >::difference_type;
-    using pointer           = typename std::iterator_traits< iterator >::pointer;
-    using reference         = typename std::iterator_traits< iterator >::reference;
-
-    iterator base;
-    std::size_t index;
-
-    indexed_iterator &
-    operator ++ ()
-    {
-        ++base; ++index;
-        return *this;
-    }
-
-    bool
-    operator < (indexed_iterator const & r) const
-    {
-        if (operator == (r)) {
-            return false;
-        }
-        return (index < r.index);
-    }
-
-    difference_type
-    operator - (indexed_iterator const & r) const
-    {
-        if (index < r.index) {
-            return -static_cast< difference_type >(r.index - index);
-        } else {
-            return +static_cast< difference_type >(index - r.index);
-        }
-    }
-
-    reference
-    operator * () const
-    {
-        return *base;
-    }
-
-    bool
-    operator == (indexed_iterator const & r) const
-    {
-        return (base == r.base);
-    }
-
-    bool
-    operator != (indexed_iterator const & r) const
-    {
-        return !operator == (r);
-    }
-
-};
-
-}
-
 int
-main(int argc, char * argv[])
+main(int argc, char * argv[]) // rbox D3 t 20 | quickhull | gnuplot -p
 {
     using size_type = std::size_t;
 
@@ -170,42 +104,39 @@ main(int argc, char * argv[])
         return EXIT_FAILURE;
     }
     points points_(count_);
-    using iterator = typename points::iterator;
-    using point_iterator = std::conditional_t< (std::is_base_of< std::random_access_iterator_tag, iterator >{}), iterator, indexed_iterator< iterator > >;
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-field-initializers"
-    auto const pbeg = point_iterator{std::begin(points_)};
-    auto const pend = point_iterator{std::end(points_)};
-#pragma clang diagnostic pop
+    auto const pbeg = std::begin(points_);
+    auto const pend = std::end(points_);
     auto p = pbeg;
-    for (size_type i = 0; i < count_; ++i) {
-        if (!std::getline(in_, line_)) {
-            out_ << std::flush;
-            err_ << "io: line count error" << std::endl;
-            return EXIT_FAILURE;
-        }
-        point & point_ = *p;
-        ++p;
-        point_.resize(dimension_);
-        {
-            iss_.str(line_);
-            auto c = std::begin(point_);
-            for (size_type j = 0; j < dimension_; ++j) {
-                if (!(iss_ >> *c)) {
-                    out_ << std::flush;
-                    err_ << "io: bad value at line " << j << " of data" << std::endl;
-                    return EXIT_FAILURE;
-                }
-                ++c;
+    {
+        for (size_type i = 0; i < count_; ++i) {
+            if (!std::getline(in_, line_)) {
+                out_ << std::flush;
+                err_ << "io: line count error" << std::endl;
+                return EXIT_FAILURE;
             }
-            iss_.clear();
+            point & point_ = *p;
+            ++p;
+            point_.resize(dimension_);
+            {
+                iss_.str(line_);
+                auto c = std::begin(point_);
+                for (size_type j = 0; j < dimension_; ++j) {
+                    if (!(iss_ >> *c)) {
+                        out_ << std::flush;
+                        err_ << "io: bad value at line " << j << " of data" << std::endl;
+                        return EXIT_FAILURE;
+                    }
+                    ++c;
+                }
+                iss_.clear();
+            }
         }
+        assert(p == pend);
     }
-    assert(p == pend);
     //out_.rdbuf()->pubsetbuf(nullptr, 0);
     out_ << "#D = " << dimension_ << '\n';
     out_ << "#N = " << count_ << '\n';
-    using quick_hull_type = quick_hull< point_iterator >;
+    using quick_hull_type = quick_hull< typename points::iterator >;
 #if 0
     using std::sqrt;
     value_type const eps = sqrt(std::numeric_limits< value_type >::epsilon()); // do use relaxed constraints for input, which supposedly should produce a plenty of complanar facets, like 'rbox D3 27 M3,4'
@@ -220,7 +151,18 @@ main(int argc, char * argv[])
         using std::chrono::steady_clock;
         {
             steady_clock::time_point const start = steady_clock::now();
-            initial_simplex_ = quick_hull_.create_initial_simplex(pbeg, pend);
+#if 0
+            p = pbeg;
+            for (size_type i = 0; i <= dimension_; ++i) {
+                initial_simplex_.push_back(p);
+                ++p;
+            }
+            quick_hull_.add_points(p, pend);
+            quick_hull_.create_initial_simplex(std::cbegin(initial_simplex_), std::prev(std::cend(initial_simplex_)));
+#else
+            quick_hull_.add_points(pbeg, pend);
+            initial_simplex_ = quick_hull_.create_initial_simplex();
+#endif
             size_type const basis_size_ = initial_simplex_.size();
             steady_clock::time_point const end = steady_clock::now();
             out_ << "#simplex time = " << duration_cast< microseconds >(end - start).count() << "us\n";
@@ -280,27 +222,30 @@ main(int argc, char * argv[])
         gnuplot_ << '\n';
     }
     gnuplot_ << "e\n";
-    p = pbeg;
+    auto const pcbeg = std::cbegin(points_);
+    auto const pcend = std::cend(points_);
+    static_cast< void >(pcend);
+    auto pc = pcbeg;
     for (size_type i = 0; i < count_; ++i) {
-        point const & point_ = *p;
-        ++p;
+        point const & point_ = *pc;
+        ++pc;
         for (value_type const & coordinate_ : point_) {
             gnuplot_ << coordinate_ << ' ';
         }
         gnuplot_ << '\n';
     }
-    assert(p == pend);
+    assert(pc == pcend);
     gnuplot_ << "e\n";
-    p = pbeg;
+    pc = pcbeg;
     for (size_type i = 0; i < count_; ++i) {
-        point const & point_ = *p;
-        ++p;
+        point const & point_ = *pc;
+        ++pc;
         for (value_type const & coordinate_ : point_) {
             gnuplot_ << coordinate_ << ' ';
         }
         gnuplot_ << i << '\n';
     }
-    assert(p == pend);
+    assert(pc == pcend);
     gnuplot_ << "e\n";
     for (auto const & facet_ : facets_) {
         auto const & vertices_ = facet_.vertices_;
