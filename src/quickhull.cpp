@@ -85,7 +85,7 @@ struct indexed_iterator
     bool
     operator != (indexed_iterator const & r) const
     {
-        return !(base == r.base);
+        return !operator == (r);
     }
 
 };
@@ -145,11 +145,13 @@ main(int argc, char * argv[])
         err_ << "io: count line" << std::endl;
         return EXIT_FAILURE;
     }
-    using value_type = double;
-    using point = std::valarray< value_type >;
 #if 0
+    using value_type = float;
+    using point = std::vector< value_type >;
     using points = std::vector< point >;
 #else
+    using value_type = double;
+    using point = std::forward_list< value_type >;
     using points = std::forward_list< point >;
 #endif
     size_type count_ = 0;
@@ -187,12 +189,14 @@ main(int argc, char * argv[])
         point_.resize(dimension_);
         {
             iss_.str(line_);
+            auto c = std::begin(point_);
             for (size_type j = 0; j < dimension_; ++j) {
-                if (!(iss_ >> point_[j])) {
+                if (!(iss_ >> *c)) {
                     out_ << std::flush;
                     err_ << "io: bad value at line " << j << " of data" << std::endl;
                     return EXIT_FAILURE;
                 }
+                ++c;
             }
             iss_.clear();
         }
@@ -204,7 +208,7 @@ main(int argc, char * argv[])
     using quick_hull_type = quick_hull< point_iterator >;
 #if 0
     using std::sqrt;
-    value_type const eps = sqrt(std::numeric_limits< value_type >::epsilon()); // use relaxed constraints for input, which supposedly should produce a plenty of complanar facets, like 'rbox D3 27 M3,4'
+    value_type const eps = sqrt(std::numeric_limits< value_type >::epsilon()); // do use relaxed constraints for input, which supposedly should produce a plenty of complanar facets, like 'rbox D3 27 M3,4'
 #else
     value_type const eps = std::numeric_limits< value_type >::epsilon();
 #endif
@@ -239,7 +243,7 @@ main(int argc, char * argv[])
         }
     }
     auto const & facets_ = quick_hull_.facets_;
-    size_type const facets_count_ = facets_.size();
+    auto const facets_count_ = std::distance(std::cbegin(facets_), std::cend(facets_));
     out_ << "#number of facets: " << facets_count_ << std::endl;
     std::ostream & gnuplot_ = out_;
     gnuplot_ << "clear\n";
@@ -263,7 +267,7 @@ main(int argc, char * argv[])
     gnuplot_ << " '-' with points notitle pointtype 4 pointsize 1.5 linetype 1"
                 ", '-' with points notitle"
                 ", '-' with labels offset character 0, character 1 notitle";
-    for (size_type i = 0; i < facets_count_; ++i) {
+    for (auto i = facets_count_; 0 < i; --i) {
         gnuplot_ << ", '-' with lines notitle"
                     ", '-' with points notitle pointtype 6 pointsize 1.5 linetype 4";
     }
@@ -298,8 +302,7 @@ main(int argc, char * argv[])
     }
     assert(p == pend);
     gnuplot_ << "e\n";
-    for (size_type i = 0; i < facets_count_; ++i) {
-        auto const & facet_ = facets_[i];
+    for (auto const & facet_ : facets_) {
         auto const & vertices_ = facet_.vertices_;
         for (auto const vertex_ : vertices_) {
             for (value_type const & coordinate_ : *vertex_) {

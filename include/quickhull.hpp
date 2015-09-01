@@ -52,7 +52,6 @@ struct quick_hull
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
 
-    using point = typename std::iterator_traits< point_iterator >::value_type;
     using value_type = std::decay_t< decltype(*std::cbegin(*std::declval< point_iterator >())) >;
 
     size_type const dimension_;
@@ -114,21 +113,7 @@ public :
         vector normal_; // components of normalized normal vector
         value_type D; // distance from the origin to the hyperplane
 
-        void
-        init(size_type const _dimension,
-             point_array const & _vertices,
-             size_type const _against,
-             point_iterator const & _apex,
-             size_type const _neighbour)
-        {
-            static_cast< void >(_dimension);
-            assert(vertices_.size() == _dimension);
-            vertices_ = _vertices;
-            vertices_[_against] = _apex;
-            assert(neighbours_.size() == _dimension);
-            neighbours_[_against] = _neighbour;
-            assert(normal_.size() == _dimension);
-        }
+        facet() = default;
 
         facet(size_type const _dimension,
               point_array const & _vertices,
@@ -165,6 +150,23 @@ public :
             }
         }
 
+        void
+        reuse(size_type const _dimension,
+              point_array const & _vertices,
+              size_type const _against,
+              point_iterator const & _apex,
+              size_type const _neighbour)
+        {
+            static_cast< void >(_dimension);
+            assert(vertices_.size() == _dimension);
+            vertices_ = _vertices;
+            vertices_[_against] = _apex;
+            assert(neighbours_.size() == _dimension);
+            neighbours_[_against] = _neighbour;
+            assert(normal_.size() == _dimension);
+        }
+
+        template< typename point >
         value_type
         distance(point const & _point) const
         {
@@ -178,15 +180,15 @@ public :
     facets facets_;
 
     value_type
-    cos_of_dihedral_angle(facet const & _this, facet const & _other) const
+    cos_of_dihedral_angle(facet const & _this, facet const & _that) const
     {
-        return std::inner_product(std::cbegin(_this.normal_), std::cend(_this.normal_), std::cbegin(_other.normal_), zero);
+        return std::inner_product(std::cbegin(_this.normal_), std::cend(_this.normal_), std::cbegin(_that.normal_), zero);
     }
 
 private :
 
     void
-    matrix_transpose() // transpose shadow matrix to cheaper filling columns with 1-s
+    matrix_transpose()
     {
         for (size_type r = 0; r < dimension_; ++r) {
             vector & row_ = shadow_matrix_[r];
@@ -198,7 +200,7 @@ private :
     }
 
     void
-    matrix_restore(size_type const _identity) // load matrix from storage, but replace _identity column with 1-s
+    matrix_restore(size_type const _identity)
     {
         for (size_type c = 0; c < dimension_; ++c) {
             vector & col_ = matrix_[c];
@@ -211,8 +213,8 @@ private :
     }
 
     void
-    matrix_sqr(size_type const _size) // matrix_ = shadow_matrix_ * transposed shadow_matrix_
-    {
+    matrix_sqr(size_type const _size)
+    { // matrix_ = shadow_matrix_ * transposed shadow_matrix_
         assert(_size < dimension_);
         for (size_type r = 0; r < _size; ++r) {
             vector & lhs_ = shadow_matrix_[r];
@@ -316,7 +318,7 @@ private :
         }
         for (size_type i = 0; i < _rank; ++i) { // Householder transformation
             value_type norm_ = zero;
-            vector & qri_ = shadow_matrix_[i]; // shadow_matrix_ is packed QR after all
+            vector & qri_ = shadow_matrix_[i];
             for (size_type j = i; j < dimension_; ++j) {
                 value_type const & qrij_ = qri_[j];
                 norm_ += qrij_ * qrij_;
@@ -351,7 +353,7 @@ private :
                     qrj_[k] -= qri_[k] * s_;
                 }
             }
-        }
+        } // shadow_matrix_ is packed QR
         return true;
     }
 
@@ -360,7 +362,7 @@ private :
     {
         assert(!(dimension_ < _rank));
         for (size_type i = 0; i < _rank; ++i) {
-            vector & qi_ = matrix_[i]; // matrix_ is Q after all
+            vector & qi_ = matrix_[i];
             qi_ = zero;
             qi_[i] = one;
             size_type j = _rank;
@@ -375,7 +377,7 @@ private :
                     qi_[k] -= qrj_[k] * s_;
                 }
             }
-        }
+        } // matrix_ is Q
     }
 
     bool
@@ -434,13 +436,11 @@ private :
             size_type const f = *rend;
             removed_facets_.erase(rend);
             facet & facet_ = facets_[f];
-            facet_.init(dimension_, _vertices, _against, _apex, _neighbour);
+            facet_.reuse(dimension_, _vertices, _against, _apex, _neighbour);
             set_hyperplane_equation(facet_);
             return f;
         }
     }
-
-    // selecting of the best facet:
 
     using ranking = std::multimap< value_type, size_type >;
     using ranking_meta = std::unordered_map< size_type, typename ranking::iterator >;
@@ -491,13 +491,11 @@ private :
     }
 
     size_type
-    get_best_facet() const // select a facet with furthest (between all facets with non-empty outsides_ set) point
+    get_best_facet() const
     {
         assert(ranking_meta_.size() == ranking_.size());
         return std::prev(std::cend(ranking_))->second;
     }
-
-    // visibility from apex:
 
     using facet_unordered_set = std::unordered_set< size_type >;
 
@@ -543,8 +541,6 @@ private :
             }
         }
     }
-
-    // adjacency of new facets via its common ridges:
 
     struct ridge
     {
@@ -617,9 +613,8 @@ private :
         }
     }
 
-public : // hypervolume of simplex, largest possible simplex heuristic, convex hull algorithm:
+public :
 
-    // http://math.stackexchange.com/questions/822741/
     value_type
     hypervolume(point_array const & _vertices) // hypervolume of parallelotope spanned on vectors from one of _vertices to all the rest
     {
@@ -635,19 +630,19 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
             row_ -= origin_;
             ++vertex;
         }
-        if (rank_ == dimension_) { // oriented hypervolume
-            return det();
-        } else { // non-oriented _rank-dimensional measure
+        if (rank_ == dimension_) {
+            return det(); // oriented hypervolume
+        } else {
             matrix_sqr(rank_);
             using std::sqrt;
-            return sqrt(det(shadow_matrix_, rank_));
+            return sqrt(det(shadow_matrix_, rank_)); // non-oriented _rank-dimensional measure
         }
     }
 
     point_array
     create_initial_simplex(point_iterator const _beg, point_iterator const _end)
     {
-        // construction of reference set of universe of points
+        // construction reference set of universe of points
         point_array basis_;
         if (_beg == _end) {
             return basis_;
@@ -665,7 +660,7 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
         if (!steal_best(internal_set_, basis_)) {
             return basis_; // can't find affinely independent second point
         }
-        { // reject 0-indexed point to rejudge it
+        { // reject 0-indexed point to rejudge it ("pop front")
             point_iterator & first_ = basis_.front();
             internal_set_.push_back(first_);
             first_ = std::move(basis_.back());
@@ -740,18 +735,19 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
     bool
     check(value_type const & _eps) const
     {
-        std::set< point_iterator > surface_points_;
         size_type const facets_count_ = facets_.size();
+        assert(0 < facets_count_);
+        std::set< point_iterator > surface_points_;
         for (size_type f = 0; f < facets_count_; ++f) { // check whether the inner point is inside relative to each hull facet or not
             facet const & facet_ = facets_[f];
             surface_points_.insert(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
             for (size_type const neighbour : facet_.neighbours_) {
                 facet const & neighbour_ = facets_[neighbour];
-                if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoiding some of roundoff errors
+                if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoid roundoff error
                     for (size_type v = 0; v < dimension_; ++v) {
-                        if (neighbour_.neighbours_[v] == f) { // opposite to facet_ vertex into neighbour_ facet
+                        if (neighbour_.neighbours_[v] == f) { // vertex v of neigbour_ facet is opposite to facet_
                             if (_eps < facet_.distance(*neighbour_.vertices_[v])) {
-                                return false; // facet is not locally convex at the ridge, common for facet_ and neighbour_ facets
+                                return false; // facet is not locally convex at ridge, common for facet_ and neighbour_ facets
                             } else {
                                 break;
                             }
@@ -823,8 +819,8 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
             for (size_type r = 0; r < dimension_; ++r) {
                 vector & gr_ = g_[r];
                 gr_ -= centroid_[r];
-                auto const minmax = std::minmax_element(std::cbegin(gr_), std::cend(gr_));
-                centroid_[r] = *minmax.second - *minmax.first;
+                auto const bounding_box = std::minmax_element(std::cbegin(gr_), std::cend(gr_));
+                centroid_[r] = *bounding_box.second - *bounding_box.first;
             }
             centroid_ *= centroid_;
             using std::sqrt;
@@ -847,7 +843,7 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
                         }
                     }
                 }
-                assert(_eps < max_); // vertex cannot match the origin after above transformations
+                assert(_eps < max_); // vertex must not match the origin after above transformations
                 if (pivot != i) {
                     gi_.swap(g_[pivot]);
                 }
@@ -873,7 +869,7 @@ public : // hypervolume of simplex, largest possible simplex heuristic, convex h
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
                     value_type const & gii_ = gi_[i];
-                    assert(_eps < abs(gii_)); // vertex cannot match the origin
+                    assert(_eps < abs(gii_)); // vertex must not match the origin
                     xi_ /= gii_;
                     if ((xi_ < zero) || (one < xi_)) {
                         in_range_ = false; // barycentric coordinate does not lie in [0;1] interval => miss
