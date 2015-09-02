@@ -49,6 +49,8 @@ template< typename point_iterator_type,
 struct quick_hull
 {
 
+    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< point_iterator_type >::iterator_category >{});
+
     using size_type = std::size_t;
 
     size_type const dimension_;
@@ -516,16 +518,16 @@ private :
         visible_.insert(_facet);
         _outside.splice(std::cend(_outside), std::move(facet_.outside_));
         facet_.coplanar_.clear();
-        for (size_type vertex = 0; vertex < dimension_; ++vertex) {
-            size_type const neighbour = facet_.neighbours_[vertex];
+        for (size_type v = 0; v < dimension_; ++v) {
+            size_type const neighbour = facet_.neighbours_[v];
             if (!process_visibles(_outside, _newfacets, neighbour, _apex)) {
-                size_type const newfacet = add_facet(facet_.vertices_, vertex, _apex, neighbour);
+                // facet_.vertices_[v]
+                size_type const newfacet = add_facet(facet_.vertices_, v, _apex, neighbour);
                 _newfacets.push_back(newfacet);
                 replace_neighbour(neighbour, _facet, newfacet);
-                find_adjacent_facets(newfacet, vertex);
+                find_adjacent_facets(newfacet, v);
             }
         }
-        // to track internal_set_: move all (not yet contained in internal_set_) facet_.vertices_ to internal_set_ if all the neighbours are visible
         unrank(_facet);
         return true;
     }
@@ -593,17 +595,17 @@ private :
     void
     find_adjacent_facets(size_type const _f, size_type const _skip)
     {
-        std::hash< void const * > pointer_hash_; // all addresses of points should be different
+        std::hash< typename std::iterator_traits< point_iterator_type >::pointer > point_hash_; // all points should be different (as well as its addresses)
         facet & facet_ = facets_[_f];
         size_type ridge_hash_ = 0;
         for (size_type v = 0; v < dimension_; ++v) {
             if (v != _skip) {
-                ridge_hash_ ^= pointer_hash_(std::addressof(*facet_.vertices_[v]));
+                ridge_hash_ ^= point_hash_(std::addressof(*facet_.vertices_[v]));
             }
         }
         for (size_type against_ = 0; against_ < dimension_; ++against_) {
             if (against_ != _skip) { // neighbouring facet against _apex is known atm
-                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ pointer_hash_(std::addressof(*facet_.vertices_[against_])))});
+                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_(std::addressof(*facet_.vertices_[against_])))});
                 if (!position.second) {
                     ridge const & ridge_ = *position.first;
                     ridge_.facet_.neighbours_[ridge_.against_] = _f;
@@ -631,9 +633,13 @@ public :
     value_type
     hypervolume(vertex_iterator vfirst, vertex_iterator const & vlast) // hypervolume of parallelotope spanned on vectors from last vertex to all the vertices lies in [vfirst, vlast)
     {
+        using vector_iterator_traits = std::iterator_traits< vertex_iterator >;
+        static_assert(std::is_base_of< std::forward_iterator_tag, typename vector_iterator_traits::iterator_category >{});
+        static_assert(std::is_same< typename vector_iterator_traits::value_type, point_iterator_type >{});
         if (vfirst == vlast) {
             return zero;
         }
+        assert(0 < std::distance(vfirst, vlast));
         auto const rank_ = static_cast< size_type >(std::distance(vfirst, vlast));
         assert(!(dimension_ < rank_));
         vector & origin_ = minor_.back();
@@ -653,22 +659,16 @@ public :
         }
     }
 
-    template< typename point_iterator >
-    void
-    add_points(point_iterator pbeg, point_iterator const & pend)
-    {
-        while (pbeg != pend) {
-            internal_set_.push_back(pbeg);
-            ++pbeg;
-        }
-    }
-
-    template< typename point_iterator >
+    template< typename basis_iterator >
     value_type
-    create_initial_simplex(point_iterator const & bfirst, point_iterator const & blast) // input is [bfirst, blast]
+    create_initial_simplex(basis_iterator const & bfirst, basis_iterator const & blast) // input is [bfirst, blast]
     {
+        using basis_iterator_traits = std::iterator_traits< basis_iterator >;
+        static_assert(std::is_base_of< std::forward_iterator_tag, typename basis_iterator_traits::iterator_category >{});
+        static_assert(std::is_same< typename basis_iterator_traits::value_type, point_iterator_type >{});
         assert(static_cast< size_type >(std::distance(bfirst, blast)) == dimension_);
-        value_type volume_ = hypervolume(bfirst, blast);
+        assert(facets_.empty());
+        value_type const volume_ = hypervolume(bfirst, blast);
         bool const swap_ = (volume_ < zero);
         for (size_type newfacet = 0; newfacet <= dimension_; ++newfacet) {
             facets_.emplace_back(dimension_, bfirst, newfacet, swap_);
@@ -680,8 +680,9 @@ public :
     }
 
     point_array
-    create_initial_simplex() // create initial simplex from internal_set_
+    create_initial_simplex() // create initial simplex using internal_set_
     {
+        assert(facets_.empty());
         point_array basis_;
         basis_.reserve(dimension_ + 1);
         basis_.push_back(internal_set_.front());
@@ -689,7 +690,7 @@ public :
         if (!steal_best(internal_set_, basis_)) {
             return basis_; // can't find affinely independent second point
         }
-        { // reject 0-indexed point to rejudge it ("pop front")
+        { // reject 0-indexed point ("pop front") to rejudge it
             point_iterator_type & first_ = basis_.front();
             internal_set_.push_front(std::move(first_));
             first_ = std::move(basis_.back());
@@ -728,7 +729,7 @@ public :
                 rank(partition(facets_[newfacet], outside_), newfacet);
             }
             newfacets_.clear();
-            outside_.clear(); // to track internal_set_: splice points from outside_ to internal_set_
+            outside_.clear();
         }
         assert(ranking_meta_.empty());
         { // compactify
