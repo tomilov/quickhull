@@ -78,6 +78,8 @@ public :
         , matrix_(dimension_)
         , shadow_matrix_(dimension_)
         , minor_(dimension_)
+        , vertices_hashes_(dimension_)
+        , inner_point_(dimension_)
     {
         assert(1 < dimension_);
         assert(!(eps < zero));
@@ -304,6 +306,7 @@ private :
         N = sqrt(std::move(N));
         _facet.normal_ /= N;
         _facet.D /= std::move(N);
+        assert(_facet.distance(inner_point_) < zero);
     }
 
     bool
@@ -499,6 +502,19 @@ private :
         return std::prev(std::cend(ranking_))->second;
     }
 
+    void
+    replace_neighbour(size_type const _facet, size_type const _from, size_type const _to)
+    {
+        if (_from != _to) {
+            for (size_type & n : facets_[_facet].neighbours_) {
+                if (n == _from) {
+                    n = _to;
+                    return;
+                }
+            }
+        }
+    }
+
     using facet_unordered_set = std::unordered_set< size_type >;
 
     facet_unordered_set visited_;
@@ -530,39 +546,26 @@ private :
         return true;
     }
 
-    void
-    replace_neighbour(size_type const _facet, size_type const _from, size_type const _to)
-    {
-        if (_from != _to) {
-            for (size_type & neighbour : facets_[_facet].neighbours_) {
-                if (neighbour == _from) {
-                    neighbour = _to;
-                    return;
-                }
-            }
-        }
-    }
-
     struct ridge
     {
 
         facet & facet_;
-        size_type const f_;
-        size_type const against_;
+        size_type const f;
+        size_type const v;
         size_type const hash_;
 
         bool
         operator == (ridge const & _rhs) const noexcept
         {
-            point_iterator_type const & lskip = facet_.vertices_[against_];
-            point_iterator_type const & rskip = _rhs.facet_.vertices_[_rhs.against_];
+            point_iterator_type const & lskip = facet_.vertices_[v];
+            point_iterator_type const & rskip = _rhs.facet_.vertices_[_rhs.v];
             for (point_iterator_type const & l : facet_.vertices_) {
                 if (l != lskip) {
                     bool found_ = false;
                     for (point_iterator_type const & r : _rhs.facet_.vertices_) {
                         if (r != rskip) {
                             if (l == r) {
-                                found_ = true; // O(d^2) expensive
+                                found_ = true; // O(D^2) expensive
                                 break;
                             }
                         }
@@ -589,25 +592,26 @@ private :
     };
 
     std::unordered_set< ridge, ridge_hash > unique_ridges_;
+    std::vector< size_type > vertices_hashes_;
 
     void
-    find_adjacent_facets(size_type const _f, size_type const _skip)
+    find_adjacent_facets(size_type const f, size_type const _skip)
     {
         std::hash< typename std::iterator_traits< point_iterator_type >::pointer > point_hash_; // all points should be different (as well as its addresses)
-        facet & facet_ = facets_[_f];
+        facet & facet_ = facets_[f];
         size_type ridge_hash_ = 0;
         for (size_type v = 0; v < dimension_; ++v) {
-            if (v != _skip) {
-                ridge_hash_ ^= point_hash_(std::addressof(*facet_.vertices_[v]));
-            }
+            size_type const hash_ = point_hash_(std::addressof(*facet_.vertices_[v]));
+            vertices_hashes_[v] = hash_;
+            ridge_hash_ ^= hash_;
         }
-        for (size_type against_ = 0; against_ < dimension_; ++against_) {
-            if (against_ != _skip) { // neighbouring facet against _apex is known atm
-                auto position = unique_ridges_.insert({facet_, _f, against_, (ridge_hash_ ^ point_hash_(std::addressof(*facet_.vertices_[against_])))});
+        for (size_type v = 0; v < dimension_; ++v) {
+            if (v != _skip) { // neighbouring facet against _apex is known atm
+                auto position = unique_ridges_.insert({facet_, f, v, (ridge_hash_ ^ vertices_hashes_[v])});
                 if (!position.second) {
                     ridge const & ridge_ = *position.first;
-                    ridge_.facet_.neighbours_[ridge_.against_] = _f;
-                    facet_.neighbours_[against_] = ridge_.f_;
+                    ridge_.facet_.neighbours_[ridge_.v] = f;
+                    facet_.neighbours_[v] = ridge_.f;
                     unique_ridges_.erase(position.first);
                 }
             }
@@ -635,14 +639,14 @@ private :
             if (destination != --source) {
                 facet & facet_ = facets_[destination];
                 facet_ = std::move(facets_.back());
+                for (size_type const n : facet_.neighbours_) {
+                    replace_neighbour(n, source, destination);
+                }
                 auto const r = ranking_meta_.find(source);
                 if (r != rend) {
                     r->second->second = destination;
                     ranking_meta_.emplace(destination, std::move(r->second));
                     ranking_meta_.erase(r);
-                }
-                for (size_type const neighbour : facet_.neighbours_) {
-                    replace_neighbour(neighbour, source, destination);
                 }
             }
             facets_.pop_back();
@@ -683,6 +687,8 @@ public :
         }
     }
 
+    vector inner_point_;
+
     template< typename basis_iterator >
     value_type
     create_initial_simplex(basis_iterator const & bfirst, basis_iterator const & blast) // input is [bfirst, blast]
@@ -692,14 +698,34 @@ public :
         static_assert(std::is_same< typename basis_iterator_traits::value_type, point_iterator_type >{});
         assert(static_cast< size_type >(std::distance(bfirst, blast)) == dimension_);
         assert(facets_.empty());
+        {
+            {
+                auto x = std::cbegin(**blast);
+                for (size_type i = 0; i < dimension_; ++i) {
+                    inner_point_[i] = *x;
+                    ++x;
+                }
+            }
+            auto b = bfirst;
+            while (b != blast) {
+                auto x = std::cbegin(**b);
+                for (size_type i = 0; i < dimension_; ++i) {
+                    inner_point_[i] += *x;
+                    ++x;
+                }
+                ++b;
+            }
+            inner_point_ /= value_type(dimension_ + 1);
+        }
         value_type const volume_ = hypervolume(bfirst, blast);
         bool const swap_ = (volume_ < zero);
-        for (size_type newfacet = 0; newfacet <= dimension_; ++newfacet) {
-            facets_.emplace_back(dimension_, bfirst, newfacet, swap_);
-            facet & newfacet_ = facets_.back();
-            set_hyperplane_equation(newfacet_);
-            rank(partition(newfacet_, internal_set_), newfacet);
+        for (size_type n = 0; n <= dimension_; ++n) {
+            facets_.emplace_back(dimension_, bfirst, n, swap_);
+            facet & facet_ = facets_.back();
+            set_hyperplane_equation(facet_);
+            rank(partition(facet_, internal_set_), n);
         }
+        assert(check());
         return volume_;
     }
 
@@ -729,6 +755,31 @@ public :
         return basis_;
     }
 
+    bool
+    check_local_convexity(facet const & facet_, size_type const f) const
+    {
+        assert(&facets_[f] == &facet_);
+        for (size_type const n : facet_.neighbours_) {
+            facet const & neighbour_ = facets_[n];
+            if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoid roundoff error
+                for (size_type v = 0; v < dimension_; ++v) {
+                    if (neighbour_.neighbours_[v] == f) { // vertex v of neigbour_ facet is opposite to facet_
+                        value_type const distance_ = facet_.distance(*neighbour_.vertices_[v]);
+                        if (zero < distance_) {
+#ifdef _DEBUG
+                            std::cerr << distance_ << std::endl;
+#endif
+                            return false; // facet is not locally convex at ridge, common for facet_ and neighbour_ facets
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     // Barber, C. B., D.P. Dobkin, and H.T. Huhdanpaa, 1995. "The Quickhull Algorithm for Convex Hulls", ACM Transactions on Mathematical Software.
     void
     create_convex_hull()
@@ -749,8 +800,10 @@ public :
             visited_.clear();
             visible_.clear();
             assert(unique_ridges_.empty());
-            for (size_type const newfacet : newfacets_) {
-                rank(partition(facets_[newfacet], outside_), newfacet);
+            for (size_type const n : newfacets_) {
+                facet & facet_ = facets_[n];
+                assert(check_local_convexity(facet_, n));
+                rank(partition(facet_, outside_), n);
             }
             newfacets_.clear();
             outside_.clear();
@@ -764,50 +817,26 @@ public :
     // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
     // Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
     bool
-    check(value_type const & _eps) const
+    check() const
     {
-        size_type const facets_count_ = facets_.size();
-        assert(0 < facets_count_);
-        std::set< point_iterator_type, point_iterator_less > surface_points_;
-        for (size_type f = 0; f < facets_count_; ++f) { // check whether the inner point is inside relative to each hull facet or not
-            facet const & facet_ = facets_[f];
-            surface_points_.insert(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
-            for (size_type const neighbour : facet_.neighbours_) {
-                facet const & neighbour_ = facets_[neighbour];
-                if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoid roundoff error
-                    for (size_type v = 0; v < dimension_; ++v) {
-                        if (neighbour_.neighbours_[v] == f) { // vertex v of neigbour_ facet is opposite to facet_
-                            value_type const distance_ = facet_.distance(*neighbour_.vertices_[v]);
-                            if (_eps < distance_) {
-                                return false; // facet is not locally convex at ridge, common for facet_ and neighbour_ facets
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                }
+        assert(!facets_.empty());
+        size_type facets_count_ = 0;
+        for (facet const & facet_ : facets_) { // check whether the inner point is inside relative to each hull facet or not
+            if (!check_local_convexity(facet_, facets_count_)) {
+                return false;
             }
+            ++facets_count_;
         }
-        assert(!surface_points_.empty());
-        vector inner_point_(zero, dimension_);
-        for (point_iterator_type const & point_ : surface_points_) {
-            auto x = std::cbegin(*point_);
-            for (size_type i = 0; i < dimension_; ++i) {
-                inner_point_[i] += *x;
-                ++x;
-            }
-        }
-        inner_point_ /= value_type(surface_points_.size());
         facet const & first_ = facets_.front();
         {
             value_type const distance_ = first_.distance(inner_point_);
-            if (!(distance_ < eps)) {
+            if (!(distance_ < zero)) {
                 return false; // inner point is not on negative side of the first facet, therefore structure is not convex
             }
         }
         vector ray_(zero, dimension_);
-        for (point_iterator_type const & vertex : first_.vertices_) {
-            auto x = std::cbegin(*vertex);
+        for (point_iterator_type const & v : first_.vertices_) {
+            auto x = std::cbegin(*v);
             for (size_type i = 0; i < dimension_; ++i) {
                 ray_[i] += *x;
                 ++x;
@@ -881,7 +910,7 @@ public :
                         }
                     }
                 }
-                assert(_eps < max_); // vertex must not match the origin after above transformations
+                assert(eps < max_); // vertex must not match the origin after above transformations
                 if (pivot != i) {
                     gi_.swap(g_[pivot]);
                 }
@@ -907,7 +936,7 @@ public :
                         xi_ -= gi_[j] * g_[j][dimension_];
                     }
                     value_type const & gii_ = gi_[i];
-                    assert(_eps < abs(gii_)); // vertex must not match the origin
+                    assert(eps < abs(gii_)); // vertex must not match the origin
                     xi_ /= gii_;
                     if ((xi_ < zero) || (one < xi_)) {
                         in_range_ = false; // barycentric coordinate does not lie in [0;1] interval => miss
@@ -920,12 +949,6 @@ public :
             }
         }
         return true;
-    }
-
-    bool
-    check() const
-    {
-        return check(eps);
     }
 
 };

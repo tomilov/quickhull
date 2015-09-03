@@ -188,7 +188,12 @@ struct qh
 
         log_ << "\ncount of points to process is " << internal_set_.size() << std::endl;
 
+#if 0
+        using std::sqrt;
         quick_hull_type quick_hull_(dimension_, sqrt(eps));
+#else
+        quick_hull_type quick_hull_(dimension_, eps);
+#endif
         {
             auto p = std::cbegin(internal_set_);
             if (!_use_simplex_heuristic) {
