@@ -188,7 +188,7 @@ struct qh
 
         log_ << "\ncount of points to process is " << internal_set_.size() << std::endl;
 
-        quick_hull_type quick_hull_(dimension_, eps);
+        quick_hull_type quick_hull_(dimension_, sqrt(eps));
         {
             auto p = std::cbegin(internal_set_);
             if (!_use_simplex_heuristic) {
@@ -208,8 +208,8 @@ struct qh
                 quick_hull_.create_initial_simplex(std::cbegin(initial_simplex_),
                                                    std::prev(std::cend(initial_simplex_)));
             }
-            log_ << "simplex time = " << duration_cast< microseconds >(steady_clock::now() - start).count()
-                 << "us" << std::endl;
+            auto const end = duration_cast< microseconds >(steady_clock::now() - start).count();
+            log_ << "simplex time = " << end << "us" << std::endl;
             size_type const basis_size_ = initial_simplex_.size();
             if (basis_size_ != dimension_ + 1) {
                 err_ << "error: algorithm: cannot create a simplex. Degenerated input set. Size of basis: "
@@ -220,18 +220,17 @@ struct qh
         {
             steady_clock::time_point const start = steady_clock::now();
             quick_hull_.create_convex_hull();
-            log_ << "quickhull time = "
-                 << TERM_COLOR_GREEN << duration_cast< microseconds >(steady_clock::now() - start).count()
-                 << "us" << TERM_COLOR_DEFAULT << std::endl;
-            if (!quick_hull_.check()) {
-                err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope"
-                     << TERM_COLOR_DEFAULT << std::endl;
-                return false;
-            }
+            auto const end = duration_cast< microseconds >(steady_clock::now() - start).count();
+            log_ << "quickhull time = " << TERM_COLOR_GREEN << end << "us" << TERM_COLOR_DEFAULT << std::endl;
         }
         log_ << "number of (convex hull) polyhedron facets is "
              << TERM_COLOR_BLUE << quick_hull_.facets_.size()
              << TERM_COLOR_DEFAULT << std::endl;
+        if (!quick_hull_.check()) {
+            err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope"
+                 << TERM_COLOR_DEFAULT << std::endl;
+            return false;
+        }
         facets_ = std::move(quick_hull_.facets_);
         return true;
     }
@@ -422,15 +421,11 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     gnuplot_.sync_with_stdio(false);
     //gnuplot_.rdbuf()->pubsetbuf(nullptr, 0);
     qh_.init();
-    while (qh_(true)) {
-        if (3 < qh_.dimension_) {
-            break;
-        }
-        if (!(gnuplot_ << qh_)) {
-            break;
-        }
-        if (!qh_.slice_layer(true)) {
-            break;
+    if (3 < qh_.dimension_) {
+        qh_(true);
+    } else {
+        while (qh_(true) && (gnuplot_ << qh_) && qh_.slice_layer(true)) {
+            continue;
         }
     }
     gnuplot_ << std::flush;

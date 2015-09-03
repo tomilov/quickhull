@@ -94,7 +94,6 @@ public :
     }
 
     using point_array = std::vector< point_iterator_type >;
-    using point_deque = std::deque< point_iterator_type >;
     using point_list = std::list< point_iterator_type >;
     using facet_array = std::vector< size_type >;
 
@@ -106,7 +105,7 @@ public :
         facet_array neighbours_; // dimension_ neighbouring facets
 
         point_list outside_; // if empty, then is convex hull's facet, else the first point (i.e. outside_.front()) is the furthest point from this facet
-        point_deque coplanar_; // coplanar points, for resulting convex hull it is guaranted that they lies within the facet or on a facet's ridge (in later case these points can be non-unique)
+        point_list coplanar_; // coplanar points, for resulting convex hull it is guaranted that they lies within the facet or on a facet's ridge (in later case these points can be non-unique)
 
         // equation of hyperplane supported the facet
         vector normal_; // components of normalized normal vector
@@ -398,8 +397,9 @@ private :
         vector & projection_ = minor_.back();
         vector & apex_ = minor_.front();
         value_type distance_ = zero;
-        auto furthest = std::cend(_from);
-        for (auto it = std::cbegin(_from); it != std::cend(_from); ++it) {
+        auto const fend = std::cend(_from);
+        auto furthest = fend;
+        for (auto it = std::cbegin(_from); it != fend; ++it) {
             std::copy_n(std::cbegin(**it), dimension_, std::begin(apex_));
             apex_ -= origin_; // turn translated space into vector space
             projection_ = apex_; // project onto orthogonal subspace
@@ -415,7 +415,7 @@ private :
                 furthest = it;
             }
         }
-        if (furthest == std::cend(_from)) {
+        if (furthest == fend) {
             return false;
         }
         _to.push_back(std::move(*furthest));
@@ -423,7 +423,7 @@ private :
         return true;
     }
 
-    std::set< size_type, std::greater< size_type > > removed_facets_;
+    facet_array removed_facets_;
 
     size_type
     add_facet(point_array const & _vertices, size_type const _against, point_iterator_type const & _apex, size_type const _neighbour)
@@ -435,9 +435,8 @@ private :
             set_hyperplane_equation(facet_);
             return f;
         } else {
-            auto const rend = std::prev(std::cend(removed_facets_));
-            size_type const f = *rend;
-            removed_facets_.erase(rend);
+            size_type const f = removed_facets_.back();
+            removed_facets_.pop_back();
             facet & facet_ = facets_[f];
             facet_.reuse(dimension_, _vertices, _against, _apex, _neighbour);
             set_hyperplane_equation(facet_);
@@ -467,7 +466,7 @@ private :
             ranking_.erase(r->second);
             ranking_meta_.erase(r);
         }
-        removed_facets_.insert(_facet);
+        removed_facets_.push_back(_facet);
     }
 
     value_type
@@ -486,7 +485,7 @@ private :
                     _facet.outside_.splice(std::cend(_facet.outside_), _points, it);
                 }
             } else if (!(d_ < -eps)) {
-                _facet.coplanar_.push_back(*it);
+                _facet.coplanar_.splice(std::cend(_facet.coplanar_), _points, it);
             }
             it = next;
         }
@@ -512,16 +511,15 @@ private :
             return (visible_.count(_facet) != 0);
         }
         facet & facet_ = facets_[_facet];
-        if (!(eps < facet_.distance(*_apex))) {
+        if (!(zero < facet_.distance(*_apex))) {
             return false;
         }
         visible_.insert(_facet);
         _outside.splice(std::cend(_outside), std::move(facet_.outside_));
-        facet_.coplanar_.clear();
+        _outside.splice(std::cend(_outside), std::move(facet_.coplanar_));
         for (size_type v = 0; v < dimension_; ++v) {
             size_type const neighbour = facet_.neighbours_[v];
             if (!process_visibles(_outside, _newfacets, neighbour, _apex)) {
-                // facet_.vertices_[v]
                 size_type const newfacet = add_facet(facet_.vertices_, v, _apex, neighbour);
                 _newfacets.push_back(newfacet);
                 replace_neighbour(neighbour, _facet, newfacet);
@@ -631,10 +629,18 @@ private :
     compactify()
     {
         size_type source = facets_.size();
+        auto const rend = std::end(ranking_meta_);
+        std::sort(std::rbegin(removed_facets_), std::rend(removed_facets_));
         for (size_type const destination : removed_facets_) {
             if (destination != --source) {
                 facet & facet_ = facets_[destination];
                 facet_ = std::move(facets_.back());
+                auto const r = ranking_meta_.find(source);
+                if (r != rend) {
+                    r->second->second = destination;
+                    ranking_meta_.emplace(destination, std::move(r->second));
+                    ranking_meta_.erase(r);
+                }
                 for (size_type const neighbour : facet_.neighbours_) {
                     replace_neighbour(neighbour, source, destination);
                 }
@@ -748,8 +754,7 @@ public :
             }
             newfacets_.clear();
             outside_.clear();
-            static size_type i = 0; ++i;
-            assert((compactify(), check()));
+            //assert((compactify(), check()));
         }
         assert(ranking_meta_.empty());
         internal_set_.clear(); // can't track internal_set_ in a proper way
@@ -796,7 +801,7 @@ public :
         facet const & first_ = facets_.front();
         {
             value_type const distance_ = first_.distance(inner_point_);
-            if (!(distance_ < zero)) {
+            if (!(distance_ < eps)) {
                 return false; // inner point is not on negative side of the first facet, therefore structure is not convex
             }
         }
