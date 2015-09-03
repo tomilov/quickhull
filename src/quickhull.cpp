@@ -1,3 +1,6 @@
+#ifdef _DEBUG
+#include <iostream>
+#endif
 #include "quickhull.hpp"
 
 #include <iostream>
@@ -64,6 +67,8 @@ struct qh
     std::string line_;
     std::istringstream iss_;
 
+    mutable bool f = true;
+
     bool
     input(std::istream & _rbox)
     {
@@ -128,6 +133,16 @@ struct qh
                 iss_.clear();
             }
         }
+        {
+            auto p = std::begin(points_);
+            auto const pend = std::end(points_);
+            while (p != pend) {
+                universe_.push_back(p);
+                ++p;
+            }
+            universe_.sort(point_iterator_less{});
+            f = true;
+        }
         return true;
     }
 
@@ -140,6 +155,7 @@ struct qh
     }
 
     value_type const eps = std::numeric_limits< value_type >::epsilon();
+    value_type const zero = value_type(0);
 
     using point_iterator_type = typename points::iterator;
 
@@ -160,46 +176,37 @@ struct qh
     using initial_simplex = typename quick_hull_type::point_array;
     using facets = typename quick_hull_type::facets;
 
-    internal_set internal_set_;
+    internal_set universe_;
     initial_simplex initial_simplex_;
     facets facets_;
-
-    mutable bool f = true;
-
-    void
-    init()
-    {
-        auto p = std::begin(points_);
-        auto const pend = std::end(points_);
-        while (p != pend) {
-            internal_set_.push_back(p);
-            ++p;
-        }
-        internal_set_.sort(point_iterator_less{});
-        f = true;
-    }
 
     bool
     operator () (bool const _use_simplex_heuristic = false)
     {
-        assert(dimension_ < internal_set_.size());
+        assert(dimension_ < universe_.size());
         assert(initial_simplex_.empty());
         assert(facets_.empty());
 
-        log_ << "\ncount of points to process is " << internal_set_.size() << std::endl;
+        log_ << "\ncount of points to process is " << universe_.size() << std::endl;
+        log_ << "epsilon = " << eps << std::endl;
 
 #if 0
         using std::sqrt;
         quick_hull_type quick_hull_(dimension_, sqrt(eps));
-#else
+#elif 0
         quick_hull_type quick_hull_(dimension_, eps);
+#else
+        quick_hull_type quick_hull_(dimension_, zero);
 #endif
         {
-            auto p = std::cbegin(internal_set_);
+            auto p = std::cbegin(universe_);
             if (!_use_simplex_heuristic) {
-                std::copy_n(p, (dimension_ + 1), std::back_inserter(initial_simplex_));
+                for (size_type i = 0; i <= dimension_; ++i) {
+                    initial_simplex_.push_back(*p);
+                    ++p;
+                }
             }
-            std::copy(p, std::cend(internal_set_), std::back_inserter(quick_hull_.internal_set_));
+            quick_hull_.add_points(p, std::cend(universe_));
         }
 
         using std::chrono::duration_cast;
@@ -217,7 +224,7 @@ struct qh
             log_ << "simplex time = " << end << "us" << std::endl;
             size_type const basis_size_ = initial_simplex_.size();
             if (basis_size_ != dimension_ + 1) {
-                err_ << "error: algorithm: cannot create a simplex. Degenerated input set. Size of basis: "
+                err_ << "error: algorithm: cannot construct a simplex. Degenerated input set. Size of basis: "
                      << basis_size_ << std::endl;
                 return false;
             }
@@ -231,9 +238,9 @@ struct qh
         log_ << "number of (convex hull) polyhedron facets is "
              << TERM_COLOR_BLUE << quick_hull_.facets_.size()
              << TERM_COLOR_DEFAULT << std::endl;
-        if (!quick_hull_.check()) {
-            err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope"
-                 << TERM_COLOR_DEFAULT << std::endl;
+        if (auto result = quick_hull_.check()) {
+            err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope; inaccuracy = "
+                 << *result << TERM_COLOR_DEFAULT << std::endl;
             return false;
         }
         facets_ = std::move(quick_hull_.facets_);
@@ -261,7 +268,7 @@ struct qh
                         "set yrange restore\n"
                         "set zrange restore\n";
         }
-        _gnuplot << "set title \'Points count is " << internal_set_.size() << "\'\n";
+        _gnuplot << "set title \'Points count is " << universe_.size() << "\'\n";
         if (dimension_ == 2) {
             _gnuplot << "plot";
         } else if (dimension_ == 3) {
@@ -287,7 +294,7 @@ struct qh
             }
             _gnuplot << "e\n";
             {
-                for (auto const & p : internal_set_) {
+                for (auto const & p : universe_) {
                     point const & point_ = *p;
                     for (value_type const & coordinate_ : point_) {
                         _gnuplot << coordinate_ << ' ';
@@ -296,7 +303,7 @@ struct qh
                 }
                 _gnuplot << "e\n";
                 size_type i = 0;
-                for (auto const & p : internal_set_) {
+                for (auto const & p : universe_) {
                     point const & point_ = *p;
                     for (value_type const & coordinate_ : point_) {
                         _gnuplot << coordinate_ << ' ';
@@ -360,8 +367,8 @@ struct qh
         assert(!surface_points_.empty());
         log_ << "count of points at convex hull is " << surface_points_.size() << std::endl;
         {
-            auto ibeg = std::cbegin(internal_set_);
-            auto const iend = std::cend(internal_set_);
+            auto ibeg = std::cbegin(universe_);
+            auto const iend = std::cend(universe_);
             auto sbeg = std::cbegin(surface_points_);
             point_iterator_less point_iterator_less_;
             assert(sbeg != std::cend(surface_points_));
@@ -370,7 +377,7 @@ struct qh
                     ++ibeg;
                 } else {
                     if (!point_iterator_less_(*sbeg, *ibeg)) {
-                        internal_set_.erase(ibeg++);
+                        universe_.erase(ibeg++);
                     }
                     ++sbeg;
                 }
@@ -379,7 +386,7 @@ struct qh
         initial_simplex_.clear();
         facets_.clear();
         log_ << std::endl;
-        return (dimension_ < internal_set_.size());
+        return (dimension_ < universe_.size());
     }
 
 };
@@ -424,7 +431,6 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     std::ostream & gnuplot_ = std::cout;
     gnuplot_.sync_with_stdio(false);
     //gnuplot_.rdbuf()->pubsetbuf(nullptr, 0);
-    qh_.init();
     if (3 < qh_.dimension_) {
         qh_(true);
     } else {
