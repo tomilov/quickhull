@@ -43,7 +43,7 @@
 template< typename value_type = float,
           typename point = std::valarray< value_type >,
           typename points = std::vector< point > >
-struct qh
+struct test_quickhull
 {
 
     using size_type = std::size_t;
@@ -51,8 +51,8 @@ struct qh
     std::ostream & err_;
     std::ostream & log_;
 
-    qh(std::ostream & _err = std::cerr,
-       std::ostream & _log = std::clog)
+    test_quickhull(std::ostream & _err = std::cerr,
+                   std::ostream & _log = std::clog)
         : err_(_err)
         , log_(_log)
     {
@@ -67,13 +67,11 @@ struct qh
     std::string line_;
     std::istringstream iss_;
 
-    mutable bool f = true;
-
     bool
-    input(std::istream & _rbox)
+    input(std::istream & _in)
     {
         {
-            if (!std::getline(_rbox, line_)) {
+            if (!std::getline(_in, line_)) {
                 err_ << "error: io: missing dimension line" << std::endl;
                 return false;
             }
@@ -97,7 +95,7 @@ struct qh
             iss_.clear();
         }
         {
-            if (!std::getline(_rbox, line_)) {
+            if (!std::getline(_in, line_)) {
                 err_ << "error: io: missing count line" << std::endl;
                 return false;
             }
@@ -115,7 +113,7 @@ struct qh
         }
         points_ = points(count_);
         for (point & point_ : points_) {
-            if (!std::getline(_rbox, line_)) {
+            if (!std::getline(_in, line_)) {
                 err_ << "error: io: wrong line count" << std::endl;
                 return false;
             }
@@ -133,260 +131,289 @@ struct qh
                 iss_.clear();
             }
         }
-        {
-            auto p = std::begin(points_);
-            auto const pend = std::end(points_);
-            while (p != pend) {
-                universe_.push_back(p);
-                ++p;
-            }
-            universe_.sort(point_iterator_less{});
-            f = true;
-        }
         return true;
     }
 
     friend
     std::istream &
-    operator >> (std::istream & _rbox, qh & _qh)
+    operator >> (std::istream & _in, test_quickhull & _qh)
     {
-        _qh.input(_rbox);
-        return _rbox;
+        _qh.input(_in);
+        return _in;
     }
 
-    value_type const eps = std::numeric_limits< value_type >::epsilon();
-    value_type const zero = value_type(0);
-
-    using point_iterator_type = typename points::iterator;
-
-    struct point_iterator_less
+    struct gnuplot
     {
+
+        std::ostream & err_;
+        std::ostream & log_;
+
+#if 1
+        using point_iterator_type = typename points::const_iterator;
+#else
+        using point_iterator_type = typename points::iterator;
+#endif
+
+        using quick_hull_type = quick_hull< point_iterator_type >;
+
+
+        value_type const zero = value_type(0);
+#if 0
+        value_type const eps = sqrt(std::numeric_limits< value_type >::epsilon());
+#elif 0
+        value_type const eps = std::numeric_limits< value_type >::epsilon();
+#else
+        value_type const eps = zero;
+#endif
+
+        quick_hull_type quick_hull_;
+
+        typename quick_hull_type::point_list universe_;
+
+        struct point_iterator_less
+        {
+
+            bool
+            operator () (point_iterator_type const & _lhs,
+                         point_iterator_type const & _rhs) const
+            {
+                return (std::addressof(*_lhs) < std::addressof(*_rhs));
+            }
+
+        };
+
+        gnuplot(std::ostream & _err,
+                std::ostream & _log,
+                size_type const _dimension,
+                points & _points)
+            : err_(_err)
+            , log_(_log)
+            , quick_hull_(_dimension, eps)
+        {
+            auto p = std::begin(_points);
+            auto const pend = std::end(_points);
+            while (p != pend) {
+                universe_.push_back(p);
+                ++p;
+            }
+            universe_.sort(point_iterator_less{});
+        }
+
+        typename quick_hull_type::point_array initial_simplex_;
 
         bool
-        operator () (point_iterator_type const & _lhs, point_iterator_type const & _rhs) const
+        operator () (bool const _use_simplex_heuristic = false)
         {
-            return (std::addressof(*_lhs) < std::addressof(*_rhs));
-        }
+            assert(quick_hull_.dimension_ < universe_.size());
+            assert(initial_simplex_.empty());
+            assert(quick_hull_.facets_.empty());
 
-    };
+            log_ << "\ncount of points to process is " << universe_.size() << std::endl;
+            log_ << "epsilon = " << eps << std::endl;
 
-    using quick_hull_type = quick_hull< point_iterator_type >;
+            {
+                auto p = std::cbegin(universe_);
+                if (!_use_simplex_heuristic) {
+                    for (size_type i = 0; i <= quick_hull_.dimension_; ++i) {
+                        initial_simplex_.push_back(*p);
+                        ++p;
+                    }
+                }
+                quick_hull_.add_points(p, std::cend(universe_));
+            }
 
-    using internal_set = typename quick_hull_type::point_list;
-    using initial_simplex = typename quick_hull_type::point_array;
-    using facets = typename quick_hull_type::facets;
-
-    internal_set universe_;
-    initial_simplex initial_simplex_;
-    facets facets_;
-
-    bool
-    operator () (bool const _use_simplex_heuristic = false)
-    {
-        assert(dimension_ < universe_.size());
-        assert(initial_simplex_.empty());
-        assert(facets_.empty());
-
-        log_ << "\ncount of points to process is " << universe_.size() << std::endl;
-        log_ << "epsilon = " << eps << std::endl;
-
-#if 0
-        using std::sqrt;
-        quick_hull_type quick_hull_(dimension_, sqrt(eps));
-#elif 0
-        quick_hull_type quick_hull_(dimension_, eps);
-#else
-        quick_hull_type quick_hull_(dimension_, zero);
-#endif
-        {
-            auto p = std::cbegin(universe_);
-            if (!_use_simplex_heuristic) {
-                for (size_type i = 0; i <= dimension_; ++i) {
-                    initial_simplex_.push_back(*p);
-                    ++p;
+            using std::chrono::duration_cast;
+            using std::chrono::microseconds;
+            using std::chrono::steady_clock;
+            {
+                steady_clock::time_point const start = steady_clock::now();
+                if (_use_simplex_heuristic) {
+                    initial_simplex_ = quick_hull_.create_initial_simplex();
+                } else {
+                    quick_hull_.create_initial_simplex(std::cbegin(initial_simplex_),
+                                                       std::prev(std::cend(initial_simplex_)));
+                }
+                auto const end = duration_cast< microseconds >(steady_clock::now() - start).count();
+                log_ << "simplex time = " << end << "us" << std::endl;
+                size_type const basis_size_ = initial_simplex_.size();
+                if (basis_size_ != quick_hull_.dimension_ + 1) {
+                    err_ << "error: algorithm: cannot construct a simplex. Degenerated input set. Size of basis: "
+                         << basis_size_ << std::endl;
+                    return false;
                 }
             }
-            quick_hull_.add_points(p, std::cend(universe_));
-        }
-
-        using std::chrono::duration_cast;
-        using std::chrono::microseconds;
-        using std::chrono::steady_clock;
-        {
-            steady_clock::time_point const start = steady_clock::now();
-            if (_use_simplex_heuristic) {
-                initial_simplex_ = quick_hull_.create_initial_simplex();
-            } else {
-                quick_hull_.create_initial_simplex(std::cbegin(initial_simplex_),
-                                                   std::prev(std::cend(initial_simplex_)));
+            {
+                steady_clock::time_point const start = steady_clock::now();
+                quick_hull_.create_convex_hull();
+                auto const end = duration_cast< microseconds >(steady_clock::now() - start).count();
+                log_ << "quickhull time = " << TERM_COLOR_GREEN << end << "us" << TERM_COLOR_DEFAULT << std::endl;
             }
-            auto const end = duration_cast< microseconds >(steady_clock::now() - start).count();
-            log_ << "simplex time = " << end << "us" << std::endl;
-            size_type const basis_size_ = initial_simplex_.size();
-            if (basis_size_ != dimension_ + 1) {
-                err_ << "error: algorithm: cannot construct a simplex. Degenerated input set. Size of basis: "
-                     << basis_size_ << std::endl;
+            log_ << "number of (convex hull) polyhedron facets is "
+                 << TERM_COLOR_BLUE << quick_hull_.facets_.size()
+                 << TERM_COLOR_DEFAULT << std::endl;
+            if (auto result = quick_hull_.check()) {
+                err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope; inaccuracy = "
+                     << *result << TERM_COLOR_DEFAULT << std::endl;
                 return false;
             }
+            return true;
         }
-        {
-            steady_clock::time_point const start = steady_clock::now();
-            quick_hull_.create_convex_hull();
-            auto const end = duration_cast< microseconds >(steady_clock::now() - start).count();
-            log_ << "quickhull time = " << TERM_COLOR_GREEN << end << "us" << TERM_COLOR_DEFAULT << std::endl;
-        }
-        log_ << "number of (convex hull) polyhedron facets is "
-             << TERM_COLOR_BLUE << quick_hull_.facets_.size()
-             << TERM_COLOR_DEFAULT << std::endl;
-        if (auto result = quick_hull_.check()) {
-            err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope; inaccuracy = "
-                 << *result << TERM_COLOR_DEFAULT << std::endl;
-            return false;
-        }
-        facets_ = std::move(quick_hull_.facets_);
-        return true;
-    }
 
-    bool
-    output(std::ostream & _gnuplot) const
-    {
-        if (3 < dimension_) {
-            log_ << "dimensionality value " << dimension_
-                 << " is out of supported range: cannot generate output for this" << std::endl;
-            return false;
-        }
-        if (f) {
-            f = false;
-            _gnuplot << "clear\n"
+        mutable bool f = true;
+
+        bool
+        output(std::ostream & _out) const
+        {
+            if (3 < quick_hull_.dimension_) {
+                log_ << "dimensionality value " << quick_hull_.dimension_
+                     << " is out of supported range: cannot generate output for this" << std::endl;
+                return false;
+            }
+            if (f) {
+                f = false;
+                _out << "set view equal xyz\n"
+                        "set autoscale\n"
+                        "set key left\n"
                         "set xrange [] writeback\n"
                         "set yrange [] writeback\n"
                         "set zrange [] writeback\n";
-        } else {
-            _gnuplot << "pause mouse\n\n"
+            } else {
+                _out << "pause mouse\n\n"
                         "clear\n"
                         "set xrange restore\n"
                         "set yrange restore\n"
                         "set zrange restore\n";
-        }
-        _gnuplot << "set title \'Points count is " << universe_.size() << "\'\n";
-        if (dimension_ == 2) {
-            _gnuplot << "plot";
-        } else if (dimension_ == 3) {
-            _gnuplot << "splot";
-        }
-        _gnuplot << " '-' with points notitle pointtype 4 pointsize 1.5 linetype 1"
+            }
+            _out << "set title \'Points count is " << universe_.size() << "\'\n";
+            if (quick_hull_.dimension_ == 2) {
+                _out << "plot";
+            } else if (quick_hull_.dimension_ == 3) {
+                _out << "splot";
+            }
+            _out << " '-' with points notitle pointtype 4 pointsize 1.5 linetype 1"
                     ", '-' with points notitle"
                     ", '-' with labels offset character 0, character 1 notitle";
-        for (auto const & facet_ : facets_) {
-            _gnuplot << ", '-' with lines notitle";
-            if (!facet_.coplanar_.empty()) {
-                _gnuplot << ", '-' with points notitle pointtype 6 pointsize 1.5 linetype 4";
-            }
-        }
-        _gnuplot << ";\n";
-        {
-            for (auto const v : initial_simplex_) {
-                point const & point_ = *v;
-                for (value_type const & coordinate_ : point_) {
-                    _gnuplot << coordinate_ << ' ';
+            for (auto const & facet_ : quick_hull_.facets_) {
+                _out << ", '-' with lines notitle";
+                if (!facet_.coplanar_.empty()) {
+                    _out << ", '-' with points notitle pointtype 6 pointsize 1.5 linetype 4";
                 }
-                _gnuplot << '\n';
             }
-            _gnuplot << "e\n";
+            _out << ";\n";
             {
-                for (auto const & p : universe_) {
-                    point const & point_ = *p;
+                for (auto const v : initial_simplex_) {
+                    point const & point_ = *v;
                     for (value_type const & coordinate_ : point_) {
-                        _gnuplot << coordinate_ << ' ';
+                        _out << coordinate_ << ' ';
                     }
-                    _gnuplot << '\n';
+                    _out << '\n';
                 }
-                _gnuplot << "e\n";
-                size_type i = 0;
-                for (auto const & p : universe_) {
-                    point const & point_ = *p;
-                    for (value_type const & coordinate_ : point_) {
-                        _gnuplot << coordinate_ << ' ';
+                _out << "e\n";
+                {
+                    for (auto const & p : universe_) {
+                        point const & point_ = *p;
+                        for (value_type const & coordinate_ : point_) {
+                            _out << coordinate_ << ' ';
+                        }
+                        _out << '\n';
                     }
-                    _gnuplot << i << '\n';
-                    ++i;
+                    _out << "e\n";
+                    size_type i = 0;
+                    for (auto const & p : universe_) {
+                        point const & point_ = *p;
+                        for (value_type const & coordinate_ : point_) {
+                            _out << coordinate_ << ' ';
+                        }
+                        _out << i << '\n';
+                        ++i;
+                    }
                 }
+                _out << "e\n";
             }
-            _gnuplot << "e\n";
-        }
-        for (auto const & facet_ : facets_) {
-            auto const & vertices_ = facet_.vertices_;
-            for (auto const vertex_ : vertices_) {
-                for (value_type const & coordinate_ : *vertex_) {
-                    _gnuplot << coordinate_ << ' ';
+            for (auto const & facet_ : quick_hull_.facets_) {
+                auto const & vertices_ = facet_.vertices_;
+                for (auto const vertex_ : vertices_) {
+                    for (value_type const & coordinate_ : *vertex_) {
+                        _out << coordinate_ << ' ';
+                    }
+                    _out << '\n';
                 }
-                _gnuplot << '\n';
-            }
-            for (value_type const & coordinate_ : *vertices_.front()) {
-                _gnuplot << coordinate_ << ' ';
-            }
-            _gnuplot << "\n"
+                for (value_type const & coordinate_ : *vertices_.front()) {
+                    _out << coordinate_ << ' ';
+                }
+                _out << "\n"
                      << "e\n";
-            if (!facet_.coplanar_.empty()) {
-                for (auto const v : facet_.coplanar_) {
-                    for (value_type const & coordinate_ : *v) {
-                        _gnuplot << coordinate_ << ' ';
+                if (!facet_.coplanar_.empty()) {
+                    for (auto const v : facet_.coplanar_) {
+                        for (value_type const & coordinate_ : *v) {
+                            _out << coordinate_ << ' ';
+                        }
+                        _out << '\n';
                     }
-                    _gnuplot << '\n';
+                    _out << "e\n";
                 }
-                _gnuplot << "e\n";
             }
+            return true;
         }
-        return true;
-    }
 
-    friend
-    std::ostream &
-    operator << (std::ostream & _gnuplot, qh const & _qh)
-    {
-        _gnuplot << "set view equal xyz\n"
-                    "set autoscale\n"
-                    "set key left\n";
-        if (!_qh.output(_gnuplot)) {
-            throw std::runtime_error("can't generate output due to invalid conditions");
-        }
-        return _gnuplot;
-    }
-
-    bool
-    slice_layer(bool const _coplanar = false)
-    {
-        assert(!facets_.empty());
-        std::set< point_iterator_type, point_iterator_less > surface_points_;
-        for (auto const & facet_ : facets_) {
-            surface_points_.insert(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
-            if (_coplanar) {
-                surface_points_.insert(std::cbegin(facet_.coplanar_), std::cend(facet_.coplanar_));
-            }
-        }
-        assert(!surface_points_.empty());
-        log_ << "count of points at convex hull is " << surface_points_.size() << std::endl;
+        friend
+        std::ostream &
+        operator << (std::ostream & _out, gnuplot const & _gnuplot)
         {
-            auto ibeg = std::cbegin(universe_);
-            auto const iend = std::cend(universe_);
-            auto sbeg = std::cbegin(surface_points_);
-            point_iterator_less point_iterator_less_;
-            assert(sbeg != std::cend(surface_points_));
-            while (ibeg != iend) {
-                if (point_iterator_less_(*ibeg, *sbeg)) {
-                    ++ibeg;
-                } else {
-                    if (!point_iterator_less_(*sbeg, *ibeg)) {
-                        universe_.erase(ibeg++);
-                    }
-                    ++sbeg;
+            if (!_gnuplot.output(_out)) {
+                throw std::runtime_error("can't generate output due to invalid conditions");
+            }
+            return _out;
+        }
+
+        bool
+        slice_layer(bool const _coplanar = false)
+        {
+            assert(!quick_hull_.facets_.empty());
+            std::set< point_iterator_type, point_iterator_less > surface_points_;
+            for (auto const & facet_ : quick_hull_.facets_) {
+                surface_points_.insert(std::cbegin(facet_.vertices_), std::cend(facet_.vertices_));
+                if (_coplanar) {
+                    surface_points_.insert(std::cbegin(facet_.coplanar_), std::cend(facet_.coplanar_));
                 }
             }
+            assert(!surface_points_.empty());
+            log_ << "count of points at convex hull is " << surface_points_.size() << std::endl;
+            {
+                auto ibeg = std::cbegin(universe_);
+                auto const iend = std::cend(universe_);
+                auto sbeg = std::cbegin(surface_points_);
+                point_iterator_less point_iterator_less_;
+                assert(sbeg != std::cend(surface_points_));
+                while (ibeg != iend) {
+                    if (point_iterator_less_(*ibeg, *sbeg)) {
+                        ++ibeg;
+                    } else {
+                        if (!point_iterator_less_(*sbeg, *ibeg)) {
+                            universe_.erase(ibeg++);
+                        }
+                        ++sbeg;
+                    }
+                }
+            }
+            initial_simplex_.clear();
+            quick_hull_.facets_.clear();
+            log_ << std::endl;
+            return (quick_hull_.dimension_ < universe_.size());
         }
-        initial_simplex_.clear();
-        facets_.clear();
-        log_ << std::endl;
-        return (dimension_ < universe_.size());
+
+        explicit
+        operator bool () const
+        {
+            return (3 < quick_hull_.dimension_);
+        }
+
+    };
+
+    gnuplot
+    operator () ()
+    {
+        return {err_, log_, dimension_, points_};
     }
 
 };
@@ -410,8 +437,8 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
         }
     }
 
-    std::istream & rbox_ = (ifs_.is_open() ? ifs_ : std::cin);
-    rbox_.sync_with_stdio(false);
+    std::istream & in_ = (ifs_.is_open() ? ifs_ : std::cin);
+    in_.sync_with_stdio(false);
 
 #if 0
     using value_type = float;
@@ -422,23 +449,25 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     using point = std::forward_list< value_type >;
     using points = std::forward_list< point >;
 #endif
-    qh< value_type, point, points > qh_(err_, log_);
+    test_quickhull< value_type, point, points > test_quickhull_(err_, log_);
 
-    if (!(rbox_ >> qh_)) {
+    if (!(in_ >> test_quickhull_)) {
         return EXIT_FAILURE;
     }
 
-    std::ostream & gnuplot_ = std::cout;
-    gnuplot_.sync_with_stdio(false);
-    //gnuplot_.rdbuf()->pubsetbuf(nullptr, 0);
-    if (3 < qh_.dimension_) {
-        qh_(true);
+    auto gnuplot_ = test_quickhull_();
+
+    std::ostream & out_ = std::cout;
+    out_.sync_with_stdio(false);
+    out_.rdbuf()->pubsetbuf(nullptr, 0);
+    if (!!gnuplot_) {
+        gnuplot_(true);
     } else {
-        while (qh_(true) && (gnuplot_ << qh_) && qh_.slice_layer(true)) {
+        while (gnuplot_(true) && (out_ << gnuplot_) && gnuplot_.slice_layer(true)) {
             continue;
         }
     }
-    gnuplot_ << std::flush;
+    out_ << std::flush;
     // test: rbox D10 t 30 | tee /tmp/q | bin/quickhull >/dev/null ; qconvex Qt Tv s TI /tmp/q
     return EXIT_SUCCESS;
 }

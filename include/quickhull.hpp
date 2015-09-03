@@ -52,7 +52,7 @@ struct quick_hull
     using size_type = std::size_t;
 
     size_type const dimension_;
-    value_type const eps;
+    value_type const & eps;
 
     value_type const zero = value_type(0);
     value_type const one = value_type(1);
@@ -70,9 +70,9 @@ private :
 public :
 
     quick_hull(size_type const _dimension,
-               value_type _eps = std::numeric_limits< value_type >::epsilon())
+               value_type const & _eps = std::numeric_limits< value_type >::epsilon())
         : dimension_(_dimension)
-        , eps(std::move(_eps))
+        , eps(_eps)
         , matrix_(dimension_)
         , shadow_matrix_(dimension_)
         , minor_(dimension_)
@@ -631,18 +631,6 @@ private :
             }
         }
     }
-
-    struct point_iterator_less
-    {
-
-        bool
-        operator () (point_iterator_type const & _lhs,
-                     point_iterator_type const & _rhs) const
-        {
-            return (std::addressof(*_lhs) < std::addressof(*_rhs));
-        }
-
-    };
 
     void
     compactify()
