@@ -25,15 +25,15 @@
 #include <cstddef>
 
 #ifdef __linux__
-#define TERM_COLOR(code) __extension__ "\e[1;" #code "m"
-#define TERM_COLOR_RED TERM_COLOR(31)
-#define TERM_COLOR_GREEN TERM_COLOR(32)
-#define TERM_COLOR_BLUE TERM_COLOR(34)
+#define TERM_COLOR(code)   __extension__ "\e[1;" #code "m"
+#define TERM_COLOR_RED     TERM_COLOR(31)
+#define TERM_COLOR_GREEN   TERM_COLOR(32)
+#define TERM_COLOR_BLUE    TERM_COLOR(34)
 #define TERM_COLOR_DEFAULT __extension__ "\e[0m"
 #else
-#define TERM_COLOR_RED ""
-#define TERM_COLOR_GREEN ""
-#define TERM_COLOR_BLUE ""
+#define TERM_COLOR_RED     ""
+#define TERM_COLOR_GREEN   ""
+#define TERM_COLOR_BLUE    ""
 #define TERM_COLOR_DEFAULT ""
 #endif
 
@@ -261,10 +261,6 @@ struct qh
                         "set yrange restore\n"
                         "set zrange restore\n";
         }
-        _gnuplot << "clear\n"
-                    "set view equal xyz\n"
-                    "set autoscale\n"
-                    "set key left\n";
         _gnuplot << "set title \'Points count is " << internal_set_.size() << "\'\n";
         if (dimension_ == 2) {
             _gnuplot << "plot";
@@ -341,6 +337,9 @@ struct qh
     std::ostream &
     operator << (std::ostream & _gnuplot, qh const & _qh)
     {
+        _gnuplot << "set view equal xyz\n"
+                    "set autoscale\n"
+                    "set key left\n";
         if (!_qh.output(_gnuplot)) {
             throw std::runtime_error("can't generate output due to invalid conditions");
         }
