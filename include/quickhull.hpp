@@ -627,6 +627,24 @@ private :
 
     };
 
+    void
+    compactify()
+    {
+        size_type source = facets_.size();
+        for (size_type const destination : removed_facets_) {
+            if (destination != --source) {
+                facet & facet_ = facets_[destination];
+                facet_ = std::move(facets_.back());
+                for (size_type const neighbour : facet_.neighbours_) {
+                    replace_neighbour(neighbour, source, destination);
+                }
+            }
+            facets_.pop_back();
+        }
+        facets_.shrink_to_fit();
+        removed_facets_.clear();
+    }
+
 public :
 
     template< typename vertex_iterator >
@@ -730,24 +748,12 @@ public :
             }
             newfacets_.clear();
             outside_.clear();
+            static size_type i = 0; ++i;
+            assert((compactify(), check()));
         }
         assert(ranking_meta_.empty());
-        { // compactify
-            size_type source = facets_.size();
-            for (size_type const destination : removed_facets_) {
-                if (destination != --source) {
-                    facet & facet_ = facets_[destination];
-                    facet_ = std::move(facets_.back());
-                    for (size_type const neighbour : facet_.neighbours_) {
-                        replace_neighbour(neighbour, source, destination);
-                    }
-                }
-                facets_.pop_back();
-            }
-            facets_.shrink_to_fit();
-            removed_facets_.clear();
-        }
         internal_set_.clear(); // can't track internal_set_ in a proper way
+        compactify();
     }
 
     // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
