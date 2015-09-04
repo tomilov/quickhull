@@ -148,8 +148,10 @@ struct test_quickhull
         std::ostream & err_;
         std::ostream & log_;
 
-#if 1
+#if 0
         using point_iterator_type = typename points::const_iterator;
+#elif 0
+        using point_iterator_type = typename points::pointer; // universe_.push_back(std::addressof(*p));
 #else
         using point_iterator_type = typename points::iterator;
 #endif
@@ -192,49 +194,53 @@ struct test_quickhull
         {
             auto p = std::begin(_points);
             auto const pend = std::end(_points);
-            while (p != pend) {
-                universe_.push_back(p);
-                ++p;
+            if (operator bool ()) {
+                quick_hull_.add_points(p, pend);
+            } else {
+                while (p != pend) {
+                    universe_.push_back(p);
+                    ++p;
+                }
+                universe_.sort(point_iterator_less{});
             }
-            universe_.sort(point_iterator_less{});
         }
 
-        typename quick_hull_type::point_array initial_simplex_;
+        typename quick_hull_type::point_list initial_simplex_;
 
         bool
         operator () (bool const _use_simplex_heuristic = false)
         {
-            assert(quick_hull_.dimension_ < universe_.size());
             assert(initial_simplex_.empty());
             assert(quick_hull_.facets_.empty());
 
-            log_ << "\ncount of points to process is " << universe_.size() << std::endl;
-            log_ << "epsilon = " << eps << std::endl;
-
-            {
-                auto p = std::cbegin(universe_);
+            if (operator bool ()) {
+                initial_simplex_ = quick_hull_.get_affine_basis();
+            } else {
+                log_ << "\ncount of points to process is " << universe_.size() << std::endl;
+                auto u = std::cbegin(universe_);
                 if (!_use_simplex_heuristic) {
                     for (size_type i = 0; i <= quick_hull_.dimension_; ++i) {
-                        initial_simplex_.push_back(*p);
-                        ++p;
+                        initial_simplex_.push_back(*u);
+                        ++u;
                     }
                 }
-                quick_hull_.add_points(p, std::cend(universe_));
+                quick_hull_.add_points(u, std::cend(universe_));
+                if (_use_simplex_heuristic) {
+                    initial_simplex_ = quick_hull_.get_affine_basis();
+                }
             }
+
+            log_ << "epsilon = " << eps << std::endl;
 
             using std::chrono::duration_cast;
             using std::chrono::microseconds;
             using std::chrono::steady_clock;
             {
                 steady_clock::time_point const start = steady_clock::now();
-                if (_use_simplex_heuristic) {
-                    initial_simplex_ = quick_hull_.create_initial_simplex();
-                } else {
-                    quick_hull_.create_initial_simplex(std::cbegin(initial_simplex_),
-                                                       std::prev(std::cend(initial_simplex_)));
-                }
-                auto const end = duration_cast< microseconds >(steady_clock::now() - start).count();
-                log_ << "simplex time = " << end << "us" << std::endl;
+                quick_hull_.create_initial_simplex(std::cbegin(initial_simplex_),
+                                                   std::prev(std::cend(initial_simplex_)));
+                auto const delta = duration_cast< microseconds >(steady_clock::now() - start).count();
+                log_ << "simplex time = " << delta << "us" << std::endl;
                 size_type const basis_size_ = initial_simplex_.size();
                 if (basis_size_ != quick_hull_.dimension_ + 1) {
                     err_ << "error: algorithm: cannot construct a simplex. Degenerated input set. Size of basis: "
@@ -245,15 +251,17 @@ struct test_quickhull
             {
                 steady_clock::time_point const start = steady_clock::now();
                 quick_hull_.create_convex_hull();
-                auto const end = duration_cast< microseconds >(steady_clock::now() - start).count();
-                log_ << "quickhull time = " << TERM_COLOR_GREEN << end << "us" << TERM_COLOR_DEFAULT << std::endl;
+                auto const delta = duration_cast< microseconds >(steady_clock::now() - start).count();
+                log_ << "quickhull time = "
+                     << TERM_COLOR_GREEN << delta << "us"
+                     << TERM_COLOR_DEFAULT << std::endl;
             }
             log_ << "number of (convex hull) polyhedron facets is "
                  << TERM_COLOR_BLUE << quick_hull_.facets_.size()
                  << TERM_COLOR_DEFAULT << std::endl;
-            if (auto result = quick_hull_.check()) {
-                err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope; inaccuracy = "
-                     << *result << TERM_COLOR_DEFAULT << std::endl;
+            if (!quick_hull_.check()) {
+                err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope"
+                     << TERM_COLOR_DEFAULT << std::endl;
                 return false;
             }
             return true;
@@ -264,7 +272,7 @@ struct test_quickhull
         bool
         output(std::ostream & _out) const
         {
-            if (3 < quick_hull_.dimension_) {
+            if (operator bool ()) {
                 log_ << "dimensionality value " << quick_hull_.dimension_
                      << " is out of supported range: cannot generate output for this" << std::endl;
                 return false;
@@ -398,7 +406,6 @@ struct test_quickhull
             }
             initial_simplex_.clear();
             quick_hull_.facets_.clear();
-            log_ << std::endl;
             return (quick_hull_.dimension_ < universe_.size());
         }
 
@@ -442,7 +449,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
 
 #if 0
     using value_type = float;
-    using point = std::vector< value_type >;
+    using point = std::valarray< value_type >;
     using points = std::vector< point >;
 #else
     using value_type = double;
@@ -461,13 +468,12 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     out_.sync_with_stdio(false);
     out_.rdbuf()->pubsetbuf(nullptr, 0);
     if (!!gnuplot_) {
-        gnuplot_(true);
+        gnuplot_(true); // rbox D10 t 30 | tee /tmp/q | bin/quickhull >/dev/null ; qconvex Qt Tv s TI /tmp/q
     } else {
-        while (gnuplot_(true) && (out_ << gnuplot_) && gnuplot_.slice_layer(true)) {
+        while (gnuplot_(true) && (out_ << gnuplot_) && gnuplot_.slice_layer(true)) { // try `rbox 1000 | bin/quickhull | gnuplot -p`
             continue;
         }
     }
     out_ << std::flush;
-    // test: rbox D10 t 30 | tee /tmp/q | bin/quickhull >/dev/null ; qconvex Qt Tv s TI /tmp/q
     return EXIT_SUCCESS;
 }

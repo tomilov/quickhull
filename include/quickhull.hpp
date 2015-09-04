@@ -21,33 +21,31 @@
  */
 #pragma once
 
+#include <type_traits>
 #include <valarray>
 #include <vector>
 #include <deque>
 #include <list>
-#include <set>
-#include <unordered_set>
 #include <map>
+#include <unordered_set>
 #include <unordered_map>
 #include <iterator>
-#include <algorithm>
-#include <utility>
-#include <numeric>
-#include <limits>
-#include <functional>
 #include <memory>
-#include <experimental/optional>
+#include <algorithm>
+#include <numeric>
+#include <utility>
+#include <functional>
 
 #include <cstdint>
 #include <cmath>
 #include <cassert>
 
-template< typename point_iterator_type,
-          typename value_type = std::decay_t< decltype(*std::cbegin(*std::declval< point_iterator_type >())) > >
+template< typename point_iterator,
+          typename value_type = std::decay_t< decltype(*cbegin(std::declval< typename std::iterator_traits< point_iterator >::value_type >())) > >
 struct quick_hull
 {
 
-    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< point_iterator_type >::iterator_category >{});
+    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >{});
 
     using size_type = std::size_t;
 
@@ -70,7 +68,7 @@ private :
 public :
 
     quick_hull(size_type const _dimension,
-               value_type const & _eps = std::numeric_limits< value_type >::epsilon())
+               value_type const & _eps)
         : dimension_(_dimension)
         , eps(_eps)
         , matrix_(dimension_)
@@ -93,8 +91,9 @@ public :
         minor_.back().resize(dimension_);
     }
 
-    using point_array = std::vector< point_iterator_type >;
-    using point_list  = std::list< point_iterator_type >;
+    using point_array = std::vector< point_iterator >;
+    using point_list  = std::list< point_iterator >;
+    using point_deque = std::deque< point_iterator >;
     using facet_array = std::vector< size_type >;
 
     struct facet // (d - 1)-dimensional face
@@ -105,7 +104,7 @@ public :
         facet_array neighbours_; // dimension_ neighbouring facets
 
         point_list outside_; // if empty, then is convex hull's facet, else the first point (i.e. outside_.front()) is the furthest point from this facet
-        point_list coplanar_; // coplanar points
+        point_deque coplanar_; // coplanar points, may containing vertices and coplanar points of coplanar facets
 
         // equation of hyperplane supported the facet
         vector normal_; // components of normalized normal vector
@@ -116,7 +115,7 @@ public :
         facet(size_type const _dimension,
               point_array const & _vertices,
               size_type const _against,
-              point_iterator_type const & _apex,
+              point_iterator const & _apex,
               size_type const _neighbour)
             : vertices_(_vertices)
             , neighbours_(_dimension)
@@ -127,9 +126,9 @@ public :
             neighbours_[_against] = _neighbour;
         }
 
-        template< typename point_iterator >
+        template< typename iterator >
         facet(size_type const _dimension,
-              point_iterator sbeg, // simplex
+              iterator sbeg, // simplex
               size_type const _vertex,
               bool const _swap)
             : normal_(_dimension)
@@ -154,7 +153,7 @@ public :
         reuse(size_type const _dimension,
               point_array const & _vertices,
               size_type const _against,
-              point_iterator_type const & _apex,
+              point_iterator const & _apex,
               size_type const _neighbour)
         {
             static_cast< void >(_dimension);
@@ -308,7 +307,7 @@ private :
     }
 
     bool
-    orthonormalize(point_array const & _affine_space,
+    orthonormalize(point_list const & _affine_space,
                    size_type const _rank,
                    vector const & _origin)
     {
@@ -386,24 +385,23 @@ private :
     }
 
     bool
-    steal_best(point_list & _from,
-               point_array & _to)
-    {
-        assert(!_to.empty());
-        size_type const rank_ = _to.size() - 1;
+    steal_best(point_list & _basis)
+    { // move point from "outside_" set to "_basis" set which is furthest from affine subspace formed by points of "_basis" set
+        assert(!_basis.empty());
+        size_type const rank_ = _basis.size() - 1;
         assert(rank_ < dimension_);
         vector & origin_ = matrix_[rank_];
-        std::copy_n(std::cbegin(*_to.back()), dimension_, std::begin(origin_));
-        if (!orthonormalize(_to, rank_, origin_)) {
+        std::copy_n(std::cbegin(*_basis.back()), dimension_, std::begin(origin_));
+        if (!orthonormalize(_basis, rank_, origin_)) {
             return false;
         }
         forward_transformation(rank_);
         vector & projection_ = minor_.back();
         vector & apex_ = minor_.front();
         value_type distance_ = zero;
-        auto const fend = std::cend(_from);
-        auto furthest = fend;
-        for (auto it = std::cbegin(_from); it != fend; ++it) {
+        auto const oend = std::cend(outside_);
+        auto furthest = oend;
+        for (auto it = std::cbegin(outside_); it != oend; ++it) {
             std::copy_n(std::cbegin(**it), dimension_, std::begin(apex_));
             apex_ -= origin_; // turn translated space into vector space
             projection_ = apex_; // project onto orthogonal subspace
@@ -419,35 +417,31 @@ private :
                 furthest = it;
             }
         }
-        if (furthest == fend) {
+        if (furthest == oend) {
             return false;
         }
-        _to.push_back(std::move(*furthest));
-        _from.erase(furthest);
+        _basis.splice(std::cend(_basis), outside_, furthest);
         return true;
     }
 
     facet_array removed_facets_;
 
-    size_type
+    std::pair< facet &, size_type >
     add_facet(point_array const & _vertices,
               size_type const _against,
-              point_iterator_type const & _apex,
+              point_iterator const & _apex,
               size_type const _neighbour)
     {
         if (removed_facets_.empty()) {
             size_type const f = facets_.size();
             facets_.emplace_back(dimension_, _vertices, _against, _apex, _neighbour);
-            facet & facet_ = facets_.back();
-            set_hyperplane_equation(facet_);
-            return f;
+            return {facets_.back(), f};
         } else {
             size_type const f = removed_facets_.back();
             removed_facets_.pop_back();
             facet & facet_ = facets_[f];
             facet_.reuse(dimension_, _vertices, _against, _apex, _neighbour);
-            set_hyperplane_equation(facet_);
-            return f;
+            return {facet_, f};
         }
     }
 
@@ -477,21 +471,23 @@ private :
         removed_facets_.push_back(f);
     }
 
+    point_list outside_;
+
     value_type
-    partition(facet & _facet,
-              point_list & _points)
+    partition(facet & _facet)
     {
-        auto it = std::cbegin(_points);
         value_type distance_ = zero;
-        while (it != std::cend(_points)) {
+        auto it = std::cbegin(outside_);
+        auto const oend = std::cend(outside_);
+        while (it != oend) {
             auto const next = std::next(it);
             value_type d_ = _facet.distance(**it);
             if (eps < d_) {
                 if (distance_ < d_) {
                     distance_ = std::move(d_);
-                    _facet.outside_.splice(std::cbegin(_facet.outside_), _points, it);
+                    _facet.outside_.splice(std::cbegin(_facet.outside_), outside_, it);
                 } else {
-                    _facet.outside_.splice(std::cend(_facet.outside_), _points, it);
+                    _facet.outside_.splice(std::cend(_facet.outside_), outside_, it);
                 }
             } else if (!(d_ < -eps)) {
                 _facet.coplanar_.push_back(*it);
@@ -523,40 +519,6 @@ private :
         }
     }
 
-    using facet_unordered_set = std::unordered_set< size_type >;
-
-    facet_unordered_set visited_;
-    facet_unordered_set visible_;
-
-    bool
-    process_visibles(point_list & _outside,
-                     facet_array & _newfacets,
-                     size_type const f,
-                     point_iterator_type const & _apex) // traverse the graph of visible facets
-    {
-        if (!visited_.insert(f).second) {
-            return (visible_.count(f) != 0);
-        }
-        facet & facet_ = facets_[f];
-        if (!(zero < facet_.distance(*_apex))) {
-            return false;
-        }
-        visible_.insert(f);
-        _outside.splice(std::cend(_outside), std::move(facet_.outside_));
-        facet_.coplanar_.clear();
-        for (size_type v = 0; v < dimension_; ++v) {
-            size_type const neighbour = facet_.neighbours_[v];
-            if (!process_visibles(_outside, _newfacets, neighbour, _apex)) {
-                size_type const newfacet = add_facet(facet_.vertices_, v, _apex, neighbour);
-                _newfacets.push_back(newfacet);
-                replace_neighbour(neighbour, f, newfacet);
-                find_adjacent_facets(newfacet, v);
-            }
-        }
-        unrank(f);
-        return true;
-    }
-
     struct ridge
     {
 
@@ -568,12 +530,12 @@ private :
         bool
         operator == (ridge const & _rhs) const noexcept
         {
-            point_iterator_type const & lskip = facet_.vertices_[v];
-            point_iterator_type const & rskip = _rhs.facet_.vertices_[_rhs.v];
-            for (point_iterator_type const & l : facet_.vertices_) {
+            point_iterator const & lskip = facet_.vertices_[v];
+            point_iterator const & rskip = _rhs.facet_.vertices_[_rhs.v];
+            for (point_iterator const & l : facet_.vertices_) {
                 if (l != lskip) {
                     bool found_ = false;
-                    for (point_iterator_type const & r : _rhs.facet_.vertices_) {
+                    for (point_iterator const & r : _rhs.facet_.vertices_) {
                         if (r != rskip) {
                             if (l == r) {
                                 found_ = true; // O(D^2) expensive
@@ -603,42 +565,82 @@ private :
     };
 
     std::unordered_set< ridge, ridge_hash > unique_ridges_;
+    std::hash< typename std::iterator_traits< point_iterator >::pointer > point_hash_;
     std::vector< size_type > vertices_hashes_;
 
     void
-    find_adjacent_facets(size_type const f,
+    find_adjacent_facets(facet & _facet,
+                         size_type const f,
                          size_type const _skip)
     {
-        std::hash< typename std::iterator_traits< point_iterator_type >::pointer > point_hash_; // all points should be different (as well as its addresses)
-        facet & facet_ = facets_[f];
         size_type ridge_hash_ = 0;
         for (size_type v = 0; v < dimension_; ++v) {
             if (v != _skip) {
-                size_type const hash_ = point_hash_(std::addressof(*facet_.vertices_[v])); // always the same value due to multipass guarantee for point_iterator_type
+                size_type const hash_ = point_hash_(std::addressof(*_facet.vertices_[v])); // is correct due to multipass guarantee for point_iterator_type
                 vertices_hashes_[v] = hash_;
                 ridge_hash_ ^= hash_;
             }
         }
         for (size_type v = 0; v < dimension_; ++v) {
-            if (v != _skip) { // neighbouring facet against _apex is known atm
-                auto position = unique_ridges_.insert({facet_, f, v, (ridge_hash_ ^ vertices_hashes_[v])});
+            if (v != _skip) { // neighbouring facet against apex (_skip-indexed) is known atm
+                auto const position = unique_ridges_.insert({_facet, f, v, (ridge_hash_ ^ vertices_hashes_[v])});
                 if (!position.second) {
                     ridge const & ridge_ = *position.first;
                     ridge_.facet_.neighbours_[ridge_.v] = f;
-                    facet_.neighbours_[v] = ridge_.f;
+                    _facet.neighbours_[v] = ridge_.f;
                     unique_ridges_.erase(position.first);
                 }
             }
         }
     }
 
+    using facet_unordered_set = std::unordered_set< size_type >;
+
+    facet_unordered_set visited_;
+    facet_unordered_set visible_;
+
+    bool
+    process_visibles(facet_array & _newfacets,
+                     size_type const f,
+                     point_iterator const & _apex) // traverse the graph of visible facets
+    {
+        assert(!(visited_.size() < visible_.size()));
+        if (!visited_.insert(f).second) {
+            return (visible_.count(f) != 0);
+        }
+        facet & facet_ = facets_[f];
+        if (!(zero < facet_.distance(*_apex))) {
+            return false;
+        }
+        visible_.insert(f);
+        outside_.splice(std::cend(outside_), std::move(facet_.outside_));
+        facet_.coplanar_.clear();
+        for (size_type v = 0; v < dimension_; ++v) {
+            size_type const neighbour = facet_.neighbours_[v];
+            if (!process_visibles(_newfacets, neighbour, _apex)) {
+                auto const newfacet = add_facet(facet_.vertices_, v, _apex, neighbour);
+                set_hyperplane_equation(newfacet.first);
+                _newfacets.push_back(newfacet.second);
+                replace_neighbour(neighbour, f, newfacet.second);
+                find_adjacent_facets(newfacet.first, newfacet.second, v);
+            }
+        }
+        unrank(f);
+        return true;
+    }
+
     void
     compactify()
     {
         size_type source = facets_.size();
+        assert(removed_facets_.size() < source);
+        assert(dimension_ < source - removed_facets_.size());
+        assert(ranking_.size() == ranking_meta_.size());
+        assert(!(source < ranking_.size()));
         auto const rend = std::end(ranking_meta_);
         std::sort(std::rbegin(removed_facets_), std::rend(removed_facets_));
         for (size_type const destination : removed_facets_) {
+            assert(!(source < destination));
             if (destination != --source) {
                 facet & facet_ = facets_[destination];
                 facet_ = std::move(facets_.back());
@@ -654,14 +656,12 @@ private :
             }
             facets_.pop_back();
         }
-        facets_.shrink_to_fit();
         removed_facets_.clear();
     }
 
     vector inner_point_;
-    point_list outside_;
 
-    std::experimental::optional< value_type >
+    bool
     check_local_convexity(facet const & facet_,
                           size_type const f) const
     {
@@ -673,7 +673,7 @@ private :
                     if (neighbour_.neighbours_[v] == f) { // vertex v of neigbour_ facet is opposite to facet_
                         value_type const distance_ = facet_.distance(*neighbour_.vertices_[v]);
                         if (eps < distance_) {
-                            return distance_; // facet is not locally convex at ridge, common for facet_ and neighbour_ facets
+                            return false; // facet is not locally convex at ridge, common for facet_ and neighbour_ facets
                         } else {
                             break;
                         }
@@ -681,7 +681,7 @@ private :
                 }
             }
         }
-        return {};
+        return true;
     }
 
 public :
@@ -693,7 +693,7 @@ public :
     {
         using iterator_traits = std::iterator_traits< iterator >;
         static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >{});
-        static_assert(std::is_same< typename iterator_traits::value_type, point_iterator_type >{});
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >{});
         if (first == last) {
             return zero;
         }
@@ -716,74 +716,79 @@ public :
         }
     }
 
-    template< typename iterator >
     void
-    add_points(iterator beg,
-               iterator const & end) // [beg; end)
+    add_points(point_iterator beg,
+               point_iterator const & end) // [beg; end)
     {
-        std::copy(beg, end, std::back_inserter(outside_));
+        while (beg != end) {
+            outside_.push_back(beg);
+            ++beg;
+        }
     }
 
     template< typename iterator >
-    value_type
+    void
+    add_points(iterator const & beg,
+               iterator const & end) // [beg; end)
+    {
+        using iterator_traits = std::iterator_traits< iterator >;
+        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >{});
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >{});
+        std::copy(beg, end, std::back_inserter(outside_));
+    }
+
+    point_list
+    get_affine_basis()
+    {
+        assert(facets_.empty());
+        point_list basis_;
+        basis_.splice(std::cend(basis_), outside_, std::begin(outside_));
+        if (!steal_best(basis_)) {
+            return basis_; // can't find affinely independent second point
+        }
+        outside_.splice(std::cbegin(outside_), basis_, std::begin(basis_)); // reject first point to rejudge it
+        for (size_type i = 0; i < dimension_; ++i) {
+            if (!steal_best(basis_)) {
+                return basis_; // can't find (i + 2) affinely independent points
+            }
+        }
+        return basis_;
+    }
+
+    template< typename iterator >
+    bool
     create_initial_simplex(iterator const & first,
                            iterator const & last) // [bfirst; blast]
     {
-        using basis_iterator_traits = std::iterator_traits< iterator >;
-        static_assert(std::is_base_of< std::forward_iterator_tag, typename basis_iterator_traits::iterator_category >{});
-        static_assert(std::is_same< typename basis_iterator_traits::value_type, point_iterator_type >{});
+        using iterator_traits = std::iterator_traits< iterator >;
+        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >{});
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >{});
         assert(static_cast< size_type >(std::distance(first, last)) == dimension_);
         assert(facets_.empty());
         {
             std::copy_n(std::cbegin(**last), dimension_, std::begin(inner_point_));
-            auto b = first;
-            while (b != last) {
-                auto x = std::cbegin(**b);
+            auto it = first;
+            while (it != last) {
+                auto x = std::cbegin(**it);
                 for (size_type i = 0; i < dimension_; ++i) {
                     inner_point_[i] += *x;
                     ++x;
                 }
-                ++b;
+                ++it;
             }
             inner_point_ /= value_type(dimension_ + 1);
         }
         value_type const volume_ = hypervolume(first, last);
         bool const swap_ = (volume_ < zero);
-        for (size_type n = 0; n <= dimension_; ++n) {
-            facets_.emplace_back(dimension_, first, n, swap_);
+        for (size_type f = 0; f <= dimension_; ++f) {
+            facets_.emplace_back(dimension_, first, f, swap_);
             facet & facet_ = facets_.back();
             set_hyperplane_equation(facet_);
-            rank(partition(facet_, outside_), n);
+            rank(partition(facet_), f);
         }
         outside_.clear();
-        assert(!check());
-        return volume_;
-    }
-
-    point_array
-    create_initial_simplex()
-    {
-        assert(facets_.empty());
-        point_array basis_;
-        basis_.reserve(dimension_ + 1);
-        basis_.push_back(outside_.front());
-        outside_.pop_front();
-        if (!steal_best(outside_, basis_)) {
-            return basis_; // can't find affinely independent second point
-        }
-        { // reject 0-indexed point ("pop front") to rejudge it
-            point_iterator_type & first_ = basis_.front();
-            outside_.push_front(std::move(first_));
-            first_ = std::move(basis_.back());
-            basis_.pop_back();
-        }
-        for (size_type i = 0; i < dimension_; ++i) {
-            if (!steal_best(outside_, basis_)) {
-                return basis_; // can't find (i + 2) affinely independent points
-            }
-        }
-        create_initial_simplex(std::cbegin(basis_), std::prev(std::cend(basis_)));
-        return basis_;
+        assert(check());
+        return swap_;
     }
 
     // Barber, C. B., D.P. Dobkin, and H.T. Huhdanpaa, 1995. "The Quickhull Algorithm for Convex Hulls", ACM Transactions on Mathematical Software.
@@ -797,9 +802,9 @@ public :
             size_type const f = get_best_facet();
             point_list & o_ = facets_[f].outside_;
             assert(!o_.empty());
-            point_iterator_type const apex = std::move(o_.front());
+            point_iterator const apex = std::move(o_.front());
             o_.pop_front();
-            if (!process_visibles(outside_, newfacets_, f, apex)) {
+            if (!process_visibles(newfacets_, f, apex)) {
                 assert(false);
             }
             visited_.clear();
@@ -807,28 +812,27 @@ public :
             assert(unique_ridges_.empty());
             for (size_type const n : newfacets_) {
                 facet & facet_ = facets_[n];
-                assert(!check_local_convexity(facet_, n));
-                rank(partition(facet_, outside_), n);
+                assert(check_local_convexity(facet_, n));
+                rank(partition(facet_), n);
             }
             newfacets_.clear();
             outside_.clear();
             //assert((compactify(), !check()));
         }
         assert(ranking_meta_.empty());
-        outside_.clear(); // can't track internal_set_ in a proper way
         compactify();
     }
 
     // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
     // Checking geometric programs or verification of geometric structures. In Proc. 12th Annu. ACM Sympos. Comput. Geom., pages 159–165, 1996.
-    std::experimental::optional< value_type >
+    bool
     check() const
     {
-        assert(!facets_.empty());
+        assert(dimension_ < facets_.size());
         size_type facets_count_ = 0;
         for (facet const & facet_ : facets_) { // check whether the inner point is inside relative to each hull facet or not
-            if (auto result = check_local_convexity(facet_, facets_count_)) {
-                return result;
+            if (!check_local_convexity(facet_, facets_count_)) {
+                return false;
             }
             ++facets_count_;
         }
@@ -836,11 +840,11 @@ public :
         {
             value_type const distance_ = first_.distance(inner_point_);
             if (!(distance_ < zero)) {
-                return distance_; // inner point is not on negative side of the first facet, therefore structure is not convex
+                return false; // inner point is not on negative side of the first facet, therefore structure is not convex
             }
         }
         vector ray_(zero, dimension_);
-        for (point_iterator_type const & v : first_.vertices_) {
+        for (point_iterator const & v : first_.vertices_) {
             auto x = std::cbegin(*v);
             for (size_type i = 0; i < dimension_; ++i) {
                 ray_[i] += *x;
@@ -852,7 +856,7 @@ public :
         {
             value_type const dot_product_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(first_.normal_), zero);
             if (!(zero < dot_product_)) {
-                return dot_product_;
+                return false;
             }
         }
         matrix g_(dimension_); // storage (d * (d + 1)) for Gaussian elimination with partial pivoting
@@ -866,7 +870,7 @@ public :
             facet const & facet_ = facets_[f];
             value_type const numerator_ = facet_.distance(inner_point_);
             if (!(numerator_ < zero)) {
-                return numerator_; // inner point is not on negative side of all the facets, i.e. structure is not convex
+                return false; // inner point is not on negative side of all the facets, i.e. structure is not convex
             }
             value_type const denominator_ = std::inner_product(std::cbegin(ray_), std::cend(ray_), std::cbegin(facet_.normal_), zero);
             if (!(zero < denominator_)) { // ray is parallel to the plane or directed away from the plane
@@ -950,10 +954,10 @@ public :
                 }
             }
             if (in_range_) {
-                return zero; // hit
+                return false; // hit
             }
         }
-        return {};
+        return true;
     }
 
 };
