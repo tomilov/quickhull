@@ -143,9 +143,8 @@ public :
                 ++sbeg;
             }
             if (_swap == (((_dimension - _vertex) % 2) == 0)) {
-                using std::swap;
-                swap(vertices_.front(), vertices_.back());
-                swap(neighbours_.front(), neighbours_.back());
+                std::swap(vertices_.front(), vertices_.back());
+                std::swap(neighbours_.front(), neighbours_.back());
             }
         }
 
@@ -193,8 +192,7 @@ private :
         for (size_type r = 0; r < dimension_; ++r) {
             vector & row_ = shadow_matrix_[r];
             for (size_type c = 1 + r; c < dimension_; ++c) {
-                using std::swap;
-                swap(shadow_matrix_[c][r], row_[c]);
+                std::swap(shadow_matrix_[c][r], row_[c]);
             }
         }
     }
@@ -817,7 +815,7 @@ public :
             }
             newfacets_.clear();
             outside_.clear();
-            //assert((compactify(), !check()));
+            //assert((compactify(), check()));
         }
         assert(ranking_meta_.empty());
         compactify();
