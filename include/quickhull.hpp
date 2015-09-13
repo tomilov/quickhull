@@ -216,7 +216,7 @@ private :
     // based on LUP decomposition (complexity is (n^3 / 3 + n^2 / 2 - 5 * n / 6) vs (2 * n^3 / 3 + n^2 + n / 3 - 2) for QR decomposition via Householder reflections) http://math.stackexchange.com/a/93508/54348
     value_type
     det(matrix & _matrix,
-        size_type const _dimension) // hottest function (52% of runtime)
+        size_type const _dimension) // hottest function (52% of runtime for D=10)
     { // calculates lower unit triangular matrix and upper triangular
         assert(0 < _dimension);
         value_type det_ = one;
@@ -302,33 +302,31 @@ private :
             ++vertex;
         }
         for (size_type i = 0; i < _rank; ++i) { // Householder transformation
-            value_type norm_ = zero;
+            value_type sum_ = zero;
             vector & qri_ = shadow_matrix_[i];
-            for (size_type j = i; j < dimension_; ++j) {
-                value_type const & qrij_ = qri_[j];
-                norm_ += qrij_ * qrij_;
+            for (size_type k = i; k < dimension_; ++k) {
+                value_type const & qrik_ = qri_[k];
+                sum_ += qrik_ * qrik_;
             }
             using std::sqrt;
-            norm_ = sqrt(norm_);
+            value_type norm_ = sqrt(sum_);
             if (!(eps < norm_)) {
                 return false;
             }
             value_type & qrii_ = qri_[i];
-            bool const sign_ = (zero < qrii_);
-            value_type factor_ = norm_ * (norm_ + (sign_ ? qrii_ : -qrii_));
+            if (qrii_ < zero) {
+                norm_ = -norm_;
+            }
+            value_type factor_ = sqrt(std::move(sum_) + qrii_ * norm_);
             if (!(eps < factor_)) {
                 return false;
             }
-            factor_ = one / sqrt(std::move(factor_));
-            if (sign_) {
-                qrii_ += norm_;
-            } else {
-                qrii_ -= norm_;
-            }
+            qrii_ += std::move(norm_);
             for (size_type k = i; k < dimension_; ++k) {
-                qri_[k] *= factor_;
+                qri_[k] /= factor_;
             }
-            for (size_type j = i + 1; j < _rank; ++j) {
+            size_type j = i;
+            while (++j < _rank) {
                 vector & qrj_ = shadow_matrix_[j];
                 value_type s_ = zero;
                 for (size_type k = i; k < dimension_; ++k) {
@@ -379,7 +377,7 @@ private :
         forward_transformation(rank_);
         vector & projection_ = shadow_matrix_.back();
         vector & apex_ = shadow_matrix_.front();
-        value_type distance_ = zero;
+        value_type distance_ = zero; // square of distance to the subspace
         auto const oend = std::cend(outside_);
         auto furthest = oend;
         for (auto it = std::cbegin(outside_); it != oend; ++it) {
@@ -391,8 +389,7 @@ private :
                 projection_ -= std::inner_product(std::cbegin(apex_), std::cend(apex_), std::cbegin(qi_), zero) * qi_;
             }
             projection_ *= projection_;
-            using std::sqrt;
-            value_type d_ = sqrt(projection_.sum()); // distance to the subspace
+            value_type d_ = projection_.sum();
             if (distance_ < d_) {
                 distance_ = std::move(d_);
                 furthest = it;
