@@ -102,8 +102,6 @@ public :
         vector normal_; // components of normalized normal vector
         value_type D; // distance from the origin to the hyperplane
 
-        facet() = default;
-
         facet(size_type const _dimension,
               point_array const & _vertices,
               size_type const _against,
@@ -224,10 +222,10 @@ private :
         value_type det_ = one;
         for (size_type i = 0; i < _dimension; ++i) {
             vector & ri_ = _matrix[i];
-            using std::abs;
-            value_type max_ = abs(ri_[i]);
             size_type pivot = i;
             {
+                using std::abs;
+                value_type max_ = abs(ri_[i]);
                 size_type p = i;
                 while (++p < _dimension) {
                     value_type y_ = abs(_matrix[p][i]);
@@ -236,24 +234,24 @@ private :
                         pivot = p;
                     }
                 }
-            }
-            if (!(eps < max_)) { // regular?
-                return zero; // singular
+                if (!(eps < max_)) { // regular?
+                    return zero; // singular
+                }
             }
             if (pivot != i) {
                 det_ = -det_; // each permutation flips sign of det
                 ri_.swap(_matrix[pivot]);
             }
-            value_type & dia_ = ri_[i];
-            det_ *= dia_; // det is multiple of diagonal elements
+            value_type const & dia_ = ri_[i];
             for (size_type j = 1 + i; j < _dimension; ++j) {
                 _matrix[j][i] /= dia_;
             }
-            for (size_type a = 1 + i; a < _dimension; ++a) {
-                vector & ra_ = _matrix[a];
-                value_type & ai_ = ra_[i];
-                for (size_type b = 1 + i; b < _dimension; ++b) {
-                    ra_[b] -= ai_ * ri_[b];
+            det_ *= dia_; // det is multiple of diagonal elements
+            for (size_type j = 1 + i; j < _dimension; ++j) {
+                vector & rj_ = _matrix[j];
+                value_type const & mji_ = rj_[i];
+                for (size_type k = 1 + i; k < _dimension; ++k) {
+                    rj_[k] -= mji_ * ri_[k];
                 }
             }
         }
