@@ -41,7 +41,7 @@
 #include <cassert>
 
 template< typename point_iterator,
-          typename value_type = std::decay_t< decltype(*cbegin(std::declval< typename std::iterator_traits< point_iterator >::value_type >())) > >
+          typename value_type = std::decay_t< decltype(*std::cbegin(std::declval< typename std::iterator_traits< point_iterator >::value_type >())) > >
 struct quick_hull
 {
 
