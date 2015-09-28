@@ -138,7 +138,9 @@ struct test_quickhull
     std::istream &
     operator >> (std::istream & _in, test_quickhull & _qh)
     {
-        _qh.input(_in);
+        if (!_qh.input(_in)) {
+            _in.setstate(std::ios::failbit);
+        }
         return _in;
     }
 
