@@ -754,7 +754,7 @@ public :
     }
 
     template< typename iterator >
-    bool
+    value_type
     create_initial_simplex(iterator const & first,
                            iterator const & last) // [bfirst; blast]
     {
@@ -786,7 +786,7 @@ public :
         }
         outside_.clear();
         assert(check());
-        return swap_;
+        return volume_;
     }
 
     // Barber, C. B., D.P. Dobkin, and H.T. Huhdanpaa, 1995. "The Quickhull Algorithm for Convex Hulls", ACM Transactions on Mathematical Software.
