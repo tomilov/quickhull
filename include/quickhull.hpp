@@ -424,7 +424,7 @@ private :
 
     facet_array removed_facets_;
 
-    std::pair< facet &, size_type >
+    std::pair< facet &, size_type const >
     add_facet(point_array const & _vertices,
               size_type const _against,
               point_iterator const & _apex,
