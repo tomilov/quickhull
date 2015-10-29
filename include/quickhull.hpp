@@ -63,7 +63,6 @@ private :
 
     matrix matrix_;
     matrix shadow_matrix_;
-    matrix minor_;
 
 public :
 
@@ -73,7 +72,6 @@ public :
         , eps(_eps)
         , matrix_(dimension_)
         , shadow_matrix_(dimension_)
-        , minor_(dimension_)
         , vertices_hashes_(dimension_)
         , inner_point_(dimension_)
     {
@@ -83,12 +81,6 @@ public :
             matrix_[r].resize(dimension_);
             shadow_matrix_[r].resize(dimension_);
         }
-        size_type const minor_size = dimension_ - 1;
-        for (size_type r = 1; r < minor_size; ++r) {
-            minor_[r].resize(minor_size);
-        }
-        minor_.front().resize(dimension_);
-        minor_.back().resize(dimension_);
     }
 
     using point_array = std::vector< point_iterator >;
@@ -258,17 +250,10 @@ private :
                 _matrix[j][i] /= dia_;
             }
             for (size_type a = 1 + i; a < _dimension; ++a) {
-                vector & a_ = minor_[a - 1];
-                value_type const & ai_ = _matrix[a][i];
-                for (size_type b = 1 + i; b < _dimension; ++b) {
-                    a_[b - 1] = ai_ * ri_[b];
-                }
-            }
-            for (size_type a = 1 + i; a < _dimension; ++a) {
-                vector const & a_ = minor_[a - 1];
                 vector & ra_ = _matrix[a];
+                value_type & ai_ = ra_[i];
                 for (size_type b = 1 + i; b < _dimension; ++b) {
-                    ra_[b] -= a_[b - 1];
+                    ra_[b] -= ai_ * ri_[b];
                 }
             }
         }
@@ -394,8 +379,8 @@ private :
             return false;
         }
         forward_transformation(rank_);
-        vector & projection_ = minor_.back();
-        vector & apex_ = minor_.front();
+        vector & projection_ = shadow_matrix_.back();
+        vector & apex_ = shadow_matrix_.front();
         value_type distance_ = zero;
         auto const oend = std::cend(outside_);
         auto furthest = oend;
@@ -697,7 +682,7 @@ public :
         }
         auto const rank_ = static_cast< size_type >(std::distance(first, last));
         assert(!(dimension_ < rank_));
-        vector & origin_ = minor_.back();
+        vector & origin_ = shadow_matrix_.back();
         std::copy_n(std::cbegin(**last), dimension_, std::begin(origin_));
         for (size_type r = 0; r < rank_; ++r) { // affine space -> vector space
             vector & row_ = matrix_[r];
