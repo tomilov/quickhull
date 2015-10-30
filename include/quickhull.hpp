@@ -221,17 +221,17 @@ private :
         assert(0 < _dimension);
         value_type det_ = one;
         for (size_type i = 0; i < _dimension; ++i) {
-            vector & ri_ = _matrix[i];
+            vector & mi_ = _matrix[i];
             size_type pivot = i;
             {
                 using std::abs;
-                value_type max_ = abs(ri_[i]);
-                size_type p = i;
-                while (++p < _dimension) {
-                    value_type y_ = abs(_matrix[p][i]);
+                value_type max_ = abs(mi_[i]);
+                size_type j = i;
+                while (++j < _dimension) {
+                    value_type y_ = abs(_matrix[j][i]);
                     if (max_ < y_) {
                         max_ = std::move(y_);
-                        pivot = p;
+                        pivot = j;
                     }
                 }
                 if (!(eps < max_)) { // regular?
@@ -240,18 +240,18 @@ private :
             }
             if (pivot != i) {
                 det_ = -det_; // each permutation flips sign of det
-                ri_.swap(_matrix[pivot]);
+                mi_.swap(_matrix[pivot]);
             }
-            value_type const & dia_ = ri_[i];
-            for (size_type j = 1 + i; j < _dimension; ++j) {
-                _matrix[j][i] /= dia_;
-            }
+            value_type const & dia_ = mi_[i];
             det_ *= dia_; // det is multiple of diagonal elements
-            for (size_type j = 1 + i; j < _dimension; ++j) {
-                vector & rj_ = _matrix[j];
-                value_type const & mji_ = rj_[i];
-                for (size_type k = 1 + i; k < _dimension; ++k) {
-                    rj_[k] -= mji_ * ri_[k];
+            size_type j = i;
+            while (++j < _dimension) {
+                vector & mj_ = _matrix[j];
+                value_type & mji_ = mj_[i];
+                mji_ /= dia_;
+                size_type k = i;
+                while (++k < _dimension) {
+                    mj_[k] -= mji_ * mi_[k];
                 }
             }
         }
