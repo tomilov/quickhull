@@ -5,5 +5,4 @@ Makefile.Release
 debug/
 release/
 *.o
-build/
 CMakeLists.txt.user

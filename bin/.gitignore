@@ -1,5 +1,3 @@
-quickhull
-randombox
-*.exe
-qprof.pdf
-quickhull.profile
+!.gitignore
+*
+*/
