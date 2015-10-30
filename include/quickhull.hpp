@@ -217,7 +217,7 @@ private :
     value_type
     det(matrix & _matrix,
         size_type const _dimension) // hottest function
-    { // produces lower unit triangular matrix and upper triangular
+    { // calculates lower unit triangular matrix and upper triangular
         assert(0 < _dimension);
         value_type det_ = one;
         for (size_type i = 0; i < _dimension; ++i) {
@@ -546,7 +546,7 @@ private :
     };
 
     std::unordered_set< ridge, ridge_hash > unique_ridges_;
-    std::hash< typename std::iterator_traits< point_iterator >::pointer > point_hash_;
+    std::hash< typename std::iterator_traits< point_iterator >::value_type const * > point_hash_;
     std::vector< size_type > vertices_hashes_;
 
     void

@@ -181,8 +181,12 @@ struct test_quickhull
             operator () (point_iterator_type const & _lhs,
                          point_iterator_type const & _rhs) const
             {
-                return (std::addressof(*_lhs) < std::addressof(*_rhs));
+                return pointer_less_(std::addressof(*_lhs), std::addressof(*_rhs));
             }
+
+        private :
+
+            std::less< typename std::iterator_traits< point_iterator_type >::value_type const * > pointer_less_;
 
         };
 
