@@ -177,6 +177,12 @@ public :
 private :
 
     void
+    copy_point(point_iterator const & _from, vector & _to) const
+    {
+        std::copy_n(std::cbegin(*_from), dimension_, std::begin(_to));
+    }
+
+    void
     matrix_transpose()
     {
         for (size_type r = 0; r < dimension_; ++r) {
@@ -268,7 +274,7 @@ private :
     set_hyperplane_equation(facet & _facet)
     {
         for (size_type r = 0; r < dimension_; ++r) {
-            std::copy_n(std::cbegin(*_facet.vertices_[r]), dimension_, std::begin(shadow_matrix_[r]));
+            copy_point(_facet.vertices_[r], shadow_matrix_[r]);
         }
         matrix_transpose();
         matrix_ = shadow_matrix_;
@@ -297,7 +303,7 @@ private :
         auto vertex = std::begin(_affine_space);
         for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
             vector & row_ = shadow_matrix_[r];
-            std::copy_n(std::cbegin(**vertex), dimension_, std::begin(row_));
+            copy_point(*vertex, row_);
             row_ -= _origin;
             ++vertex;
         }
@@ -370,7 +376,7 @@ private :
         size_type const rank_ = _basis.size() - 1;
         assert(rank_ < dimension_);
         vector & origin_ = matrix_[rank_];
-        std::copy_n(std::cbegin(*_basis.back()), dimension_, std::begin(origin_));
+        copy_point(_basis.back(), origin_);
         if (!orthonormalize(_basis, rank_, origin_)) {
             return false;
         }
@@ -381,7 +387,7 @@ private :
         auto const oend = std::cend(outside_);
         auto furthest = oend;
         for (auto it = std::cbegin(outside_); it != oend; ++it) {
-            std::copy_n(std::cbegin(**it), dimension_, std::begin(apex_));
+            copy_point(*it, apex_);
             apex_ -= origin_; // turn translated space into vector space
             projection_ = apex_; // project onto orthogonal subspace
             for (size_type i = 0; i < rank_; ++i) {
@@ -554,9 +560,7 @@ private :
         size_type ridge_hash_ = 0;
         for (size_type v = 0; v < dimension_; ++v) {
             if (v != _skip) {
-                size_type const hash_ = point_hash_(std::addressof(*_facet.vertices_[v])); // is correct due to multipass guarantee for point_iterator_type
-                vertices_hashes_[v] = hash_;
-                ridge_hash_ ^= hash_;
+                ridge_hash_ ^= (vertices_hashes_[v] = point_hash_(std::addressof(*_facet.vertices_[v])));
             }
         }
         for (size_type v = 0; v < dimension_; ++v) {
@@ -678,10 +682,10 @@ public :
         auto const rank_ = static_cast< size_type >(std::distance(first, last));
         assert(!(dimension_ < rank_));
         vector & origin_ = shadow_matrix_.back();
-        std::copy_n(std::cbegin(**last), dimension_, std::begin(origin_));
+        copy_point(*last, origin_);
         for (size_type r = 0; r < rank_; ++r) { // affine space -> vector space
             vector & row_ = matrix_[r];
-            std::copy_n(std::cbegin(**first), dimension_, std::begin(row_));
+            copy_point(*first, row_);
             row_ -= origin_;
             ++first;
         }
@@ -744,7 +748,7 @@ public :
         assert(static_cast< size_type >(std::distance(first, last)) == dimension_);
         assert(facets_.empty());
         {
-            std::copy_n(std::cbegin(**last), dimension_, std::begin(inner_point_));
+            copy_point(*last, inner_point_);
             auto it = first;
             while (it != last) {
                 auto x = std::cbegin(**it);
