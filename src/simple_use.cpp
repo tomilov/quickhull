@@ -137,40 +137,6 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     value_type const eps = std::numeric_limits< value_type >::epsilon();
     std::clog << "epsilon = " << eps << std::endl;
 
-    // check input (O(N^2) expensive)
-    std::clog << "start to checking input:   ";
-    auto const pbeg = std::cbegin(points_);
-    auto const pend = std::cend(points_);
-    size_type c = 0;
-    for (auto i = pbeg; i != pend; ++i) {
-        auto const it = std::cbegin(*i);
-        auto j = i;
-        while (++j != pend) {
-            auto p = it;
-            auto q = std::cbegin(*j);
-            value_type d_ = zero;
-            for (size_type k = 0; k < dimension_; ++k) {
-                value_type const delta_ = *p - *q;
-                d_ += delta_ * delta_;
-                ++p;
-                ++q;
-            }
-            using std::sqrt;
-            if (!(eps < std::sqrt(d_))) {
-                std::clog << "warning!: input: points #"
-                          << std::distance(pbeg, i) << " and #"
-                          << std::distance(pbeg, j)
-                          << " are too close\n";
-            }
-        }
-        if ((++c % (count_ / 100)) == 0) {
-            auto const per_cent = (c / (count_ / 100));
-            std::clog << ((per_cent < 11) ? "\b\b" : "\b\b\b") << per_cent << "%" << std::flush;
-        }
-    }
-    std::clog << std::endl;
-    std::clog << "input checking completed" << std::endl;
-
     // define and setup QH class instance
     using quick_hull_type = quick_hull< typename points::const_iterator >;
     quick_hull_type quick_hull_(dimension_, eps); // (1)
