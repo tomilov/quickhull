@@ -72,17 +72,17 @@ struct test_quickhull
     {
         {
             if (!std::getline(_in, line_)) {
-                err_ << "error: io: missing dimension line" << std::endl;
+                err_ << "error: input: missing dimension line" << std::endl;
                 return false;
             }
             iss_.str(line_);
             if (!(iss_ >> dimension_)) {
-                err_ << "error: io: dimension format" << std::endl;
+                err_ << "error: input: dimension format" << std::endl;
                 return false;
             }
             log_ << "dimensionality of input is " << dimension_ << std::endl;
             if (!(1 < dimension_)) {
-                err_ << "error: io: dimensionality value is not greater then one" << std::endl;
+                err_ << "error: input: dimensionality value is not greater then one" << std::endl;
                 return false;
             }
             {
@@ -96,25 +96,25 @@ struct test_quickhull
         }
         {
             if (!std::getline(_in, line_)) {
-                err_ << "error: io: missing count line" << std::endl;
+                err_ << "error: input: missing count line" << std::endl;
                 return false;
             }
             iss_.str(line_);
             if (!(iss_ >> count_)) {
-                err_ << "error: io: format of count" << std::endl;
+                err_ << "error: input: format of count" << std::endl;
                 return false;
             }
             iss_.clear();
             log_ << "input points count = " << count_ << std::endl;
             if (!(dimension_ < count_)) {
-                err_ << "error: io: points count is not greater than to dimensionality" << std::endl;
+                err_ << "error: input: points count is not greater than to dimensionality" << std::endl;
                 return false;
             }
         }
         points_ = points(count_);
         for (point & point_ : points_) {
             if (!std::getline(_in, line_)) {
-                err_ << "error: io: wrong line count" << std::endl;
+                err_ << "error: input: wrong line count" << std::endl;
                 return false;
             }
             point_.resize(dimension_);
@@ -123,7 +123,7 @@ struct test_quickhull
                 auto c = std::begin(point_);
                 for (size_type j = 0; j < dimension_; ++j) {
                     if (!(iss_ >> *c)) {
-                        err_ << "error: io: bad corodinate value at line " << j << " of data" << std::endl;
+                        err_ << "error: input: bad corodinate value at line " << j << " of data" << std::endl;
                         return false;
                     }
                     ++c;

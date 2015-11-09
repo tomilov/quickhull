@@ -16,7 +16,7 @@
 #include <fstream>
 #include <sstream>
 
-
+#include <cmath>
 #include <cstdlib>
 
 #ifdef __linux__
@@ -72,17 +72,17 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     // input a data (fill a container with points)
     {
         if (!std::getline(in_, line_)) {
-            std::cerr << "error: io: missing dimension line" << std::endl;
+            std::cerr << "error: input: missing dimension line" << std::endl;
             return false;
         }
         iss_.str(line_);
         if (!(iss_ >> dimension_)) {
-            std::cerr << "error: io: dimension format" << std::endl;
+            std::cerr << "error: input: dimension format" << std::endl;
             return false;
         }
         std::clog << "dimensionality of input is " << dimension_ << std::endl;
         if (!(1 < dimension_)) {
-            std::cerr << "error: io: dimensionality value is not greater then one" << std::endl;
+            std::cerr << "error: input: dimensionality value is not greater then one" << std::endl;
             return false;
         }
         {
@@ -96,25 +96,25 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     }
     {
         if (!std::getline(in_, line_)) {
-            std::cerr << "error: io: missing count line" << std::endl;
+            std::cerr << "error: input: missing count line" << std::endl;
             return false;
         }
         iss_.str(line_);
         if (!(iss_ >> count_)) {
-            std::cerr << "error: io: format of count" << std::endl;
+            std::cerr << "error: input: format of count" << std::endl;
             return false;
         }
         iss_.clear();
         std::clog << "input points count = " << count_ << std::endl;
         if (!(dimension_ < count_)) {
-            std::cerr << "error: io: points count is not greater then dimensionality" << std::endl;
+            std::cerr << "error: input: points count is not greater then dimensionality" << std::endl;
             return false;
         }
     }
     points_ = points(count_);
     for (point & point_ : points_) {
         if (!std::getline(in_, line_)) {
-            std::cerr << "error: io: wrong line count" << std::endl;
+            std::cerr << "error: input: wrong line count" << std::endl;
             return false;
         }
         point_.resize(dimension_);
@@ -123,7 +123,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
             auto c = std::begin(point_);
             for (size_type j = 0; j < dimension_; ++j) {
                 if (!(iss_ >> *c)) {
-                    std::cerr << "error: io: bad corodinate value at line " << j << " of data" << std::endl;
+                    std::cerr << "error: input: bad corodinate value at line " << j << " of data" << std::endl;
                     return false;
                 }
                 ++c;
@@ -133,8 +133,43 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     }
 
     // set epsilon (can be zero)
+    value_type const zero = value_type(0);
     value_type const eps = std::numeric_limits< value_type >::epsilon();
     std::clog << "epsilon = " << eps << std::endl;
+
+    // check input (O(N^2) expensive)
+    std::clog << "start to checking input:   ";
+    auto const pbeg = std::cbegin(points_);
+    auto const pend = std::cend(points_);
+    size_type c = 0;
+    for (auto i = pbeg; i != pend; ++i) {
+        auto const it = std::cbegin(*i);
+        auto j = i;
+        while (++j != pend) {
+            auto p = it;
+            auto q = std::cbegin(*j);
+            value_type d_ = zero;
+            for (size_type k = 0; k < dimension_; ++k) {
+                value_type const delta_ = *p - *q;
+                d_ += delta_ * delta_;
+                ++p;
+                ++q;
+            }
+            using std::sqrt;
+            if (!(eps < std::sqrt(d_))) {
+                std::clog << "warning!: input: points #"
+                          << std::distance(pbeg, i) << " and #"
+                          << std::distance(pbeg, j)
+                          << " are too close\n";
+            }
+        }
+        if ((++c % (count_ / 100)) == 0) {
+            auto const per_cent = (c / (count_ / 100));
+            std::clog << ((per_cent < 11) ? "\b\b" : "\b\b\b") << per_cent << "%" << std::flush;
+        }
+    }
+    std::clog << std::endl;
+    std::clog << "input checking completed" << std::endl;
 
     // define and setup QH class instance
     using quick_hull_type = quick_hull< typename points::const_iterator >;
