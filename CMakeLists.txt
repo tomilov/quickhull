@@ -26,4 +26,4 @@ set( CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "" ) # suppress -rdynamic flag
 #aux_source_directory( src/ SOURCES )
 include_directories( include/ )
 
-add_executable( ${PROJECT_NAME} "src/quickhull.cpp" "include/quickhull.hpp" )
+add_executable( ${PROJECT_NAME} "src/simple_use.cpp" "include/quickhull.hpp" )

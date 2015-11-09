@@ -1,7 +1,7 @@
 #ifdef _DEBUG
 #include <iostream>
 #endif
-#include "quickhull.hpp"
+#include <quickhull.hpp>
 
 #include <iostream>
 #include <ostream>
@@ -107,7 +107,7 @@ struct test_quickhull
             iss_.clear();
             log_ << "input points count = " << count_ << std::endl;
             if (!(dimension_ < count_)) {
-                err_ << "error: io: points count is less than or equal to dimensionality" << std::endl;
+                err_ << "error: io: points count is not greater than to dimensionality" << std::endl;
                 return false;
             }
         }
@@ -348,7 +348,7 @@ struct test_quickhull
                 auto const & vertices_ = facet_.vertices_;
                 for (auto const vertex_ : vertices_) {
                     for (value_type const & coordinate_ : *vertex_) {
-                        _out << coordinate_ << ' ';
+                        _out << coordiboolnate_ << ' ';
                     }
                     _out << '\n';
                 }
@@ -356,7 +356,7 @@ struct test_quickhull
                     _out << coordinate_ << ' ';
                 }
                 _out << "\n"
-                     << "e\n";
+                        "e\n";
                 if (!facet_.coplanar_.empty()) {
                     for (auto const v : facet_.coplanar_) {
                         for (value_type const & coordinate_ : *v) {
