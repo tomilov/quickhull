@@ -22,7 +22,6 @@
 #pragma once
 
 #include <type_traits>
-#include <valarray>
 #include <vector>
 #include <deque>
 #include <list>
@@ -60,10 +59,9 @@ struct quick_hull
 
 private :
 
-    using storage = std::vector< value_type >;
     using matrix = std::vector< value_type * >;
 
-    storage storage_;
+    vector storage_;
     value_type * inner_point_;
     matrix matrix_;
     matrix shadow_matrix_;
@@ -106,64 +104,11 @@ public :
         facet_array neighbours_; // dimension_ neighbouring facets
 
         point_list outside_; // if empty, then is convex hull's facet, else the first point (i.e. outside_.front()) is the furthest point from this facet
-        point_deque coplanar_; // coplanar points, may containing vertices and coplanar points of coplanar facets
+        point_deque coplanar_; // containing coplanar points and vertices of coplanar facets as well
 
-        // equation of hyperplane supported the facet
+        // equation of supporting hyperplane
         vector normal_; // components of normalized normal vector
         value_type D; // distance from the origin to the hyperplane
-
-        facet(size_type const _dimension,
-              point_array const & _vertices,
-              size_type const _against,
-              point_iterator const & _apex,
-              size_type const _neighbour)
-            : vertices_(_vertices)
-            , neighbours_(_dimension)
-            , normal_(_dimension)
-        {
-            assert(vertices_.size() == _dimension);
-            vertices_[_against] = _apex;
-            neighbours_[_against] = _neighbour;
-        }
-
-        template< typename iterator >
-        facet(size_type const _dimension,
-              iterator sbeg, // simplex
-              size_type const _vertex,
-              bool const _swap)
-            : normal_(_dimension)
-        {
-            vertices_.reserve(_dimension);
-            neighbours_.reserve(_dimension);
-            for (size_type v = 0; v <= _dimension; ++v) {
-                if (v != _vertex) {
-                    vertices_.push_back(*sbeg);
-                    neighbours_.push_back(v);
-                }
-                ++sbeg;
-            }
-            if (_swap == (((_dimension - _vertex) % 2) == 0)) {
-                using std::swap;
-                swap(vertices_.front(), vertices_.back());
-                swap(neighbours_.front(), neighbours_.back());
-            }
-        }
-
-        void
-        reuse(size_type const _dimension,
-              point_array const & _vertices,
-              size_type const _against,
-              point_iterator const & _apex,
-              size_type const _neighbour)
-        {
-            static_cast< void >(_dimension);
-            assert(vertices_.size() == _dimension);
-            vertices_ = _vertices;
-            vertices_[_against] = _apex;
-            assert(neighbours_.size() == _dimension);
-            neighbours_[_against] = _neighbour;
-            assert(normal_.size() == _dimension);
-        }
 
         template< typename iterator >
         value_type
@@ -175,8 +120,7 @@ public :
     };
 
     value_type
-    cos_of_dihedral_angle(facet const & _this,
-                          facet const & _that) const
+    cos_of_dihedral_angle(facet const & _this, facet const & _that) const
     {
         return std::inner_product(std::cbegin(_this.normal_), std::cend(_this.normal_), std::cbegin(_that.normal_), zero);
     }
@@ -188,7 +132,61 @@ public :
 private :
 
     void
-    copy(point_iterator const & _from, value_type * _to) const
+    make_facet(facet & _facet,
+               point_array const & _vertices,
+               size_type const _against,
+               point_iterator const & _apex,
+               size_type const _neighbour)
+    {
+        assert(_vertices.size() == dimension_);
+        _facet.vertices_ = _vertices;
+        _facet.vertices_[_against] = _apex;
+        _facet.neighbours_.resize(dimension_);
+        _facet.neighbours_[_against] = _neighbour;
+        _facet.normal_.resize(dimension_);
+    }
+
+    template< typename iterator >
+    void
+    make_facet(facet & _facet,
+               iterator sbeg, // simplex
+               size_type const _vertex,
+               bool const _swap)
+    {
+        _facet.vertices_.reserve(dimension_);
+        _facet.neighbours_.reserve(dimension_);
+        for (size_type v = 0; v <= dimension_; ++v) {
+            if (v != _vertex) {
+                _facet.vertices_.push_back(*sbeg);
+                _facet.neighbours_.push_back(v);
+            }
+            ++sbeg;
+        }
+        if (_swap == (((dimension_ - _vertex) % 2) == 0)) {
+            using std::swap;
+            swap(_facet.vertices_.front(), _facet.vertices_.back());
+            swap(_facet.neighbours_.front(), _facet.neighbours_.back());
+        }
+        _facet.normal_.resize(dimension_);
+    }
+
+    void
+    reuse_facet(facet & _facet,
+                point_array const & _vertices,
+                size_type const _against,
+                point_iterator const & _apex,
+                size_type const _neighbour)
+    {
+        assert(_vertices.size() == dimension_);
+        _facet.vertices_ = _vertices;
+        _facet.vertices_[_against] = _apex;
+        assert(_facet.neighbours_.size() == dimension_);
+        _facet.neighbours_[_against] = _neighbour;
+        assert(_facet.normal_.size() == dimension_);
+    }
+
+    void
+    copy_point(point_iterator const & _from, value_type * _to) const
     {
         std::copy_n(std::cbegin(*_from), dimension_, _to);
     }
@@ -202,10 +200,10 @@ private :
     }
 
     void
-    add(value_type * _minuend, value_type const & _subtrahend) const
+    shift(value_type * _augend, value_type const & _addend) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
-            *_minuend++ += _subtrahend;
+            *_augend++ += _addend;
         }
     }
 
@@ -218,10 +216,10 @@ private :
     }
 
     void
-    scale_and_assign(value_type * _assignee, value_type const * _multiplicand, value_type const & _multiplier) const
+    scale_and_assign(value_type * _assignee, value_type const * _multiplicand, value_type const & _factor) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
-            *_assignee++ = *_multiplicand++ * _multiplier;
+            *_assignee++ = (*_multiplicand++ * _factor);
         }
     }
 
@@ -234,38 +232,19 @@ private :
     }
 
     void
-    multiply_and_add(value_type * _assignee, value_type const * _multiplicand, value_type const * _multiplier) const
+    multiply_and_add(value_type * _assignee, value_type const * _multiplicand, value_type const & _factor) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
-            *_assignee++ += (*_multiplicand++ * *_multiplier++);
+            *_assignee++ += (*_multiplicand++ * _factor);
         }
     }
 
     void
-    multiply_and_add(value_type * _assignee, value_type const * _multiplicand, value_type const & _multiplier) const
+    scale_and_shift(value_type * _multiplicand, value_type const * _direction, value_type const & _factor) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
-            *_assignee++ += (*_multiplicand++ * _multiplier);
+            (*_multiplicand++ *= _factor) += *_direction++;
         }
-    }
-
-    void
-    scale_and_shift(value_type * _multiplicand, value_type const * _direction, value_type const & _multiplier) const
-    {
-        for (size_type i = 0; i < dimension_; ++i) {
-            (*_multiplicand++ *= _multiplier) += *_direction++;
-        }
-    }
-
-    value_type
-    square_and_accumulate(value_type * _multiplicand) const
-    {
-        value_type sum_ = zero;
-        for (size_type i = 0; i < dimension_; ++i) {
-            sum_ += (*_multiplicand *= *_multiplicand);
-            ++_multiplicand;
-        }
-        return sum_;
     }
 
     void
@@ -294,6 +273,14 @@ private :
     }
 
     void
+    matrix_restore()
+    {
+        for (size_type c = 0; c < dimension_; ++c) {
+            std::copy_n(shadow_matrix_[c], dimension_, matrix_[c]);
+        }
+    }
+
+    void
     matrix_sqr(size_type const _size)
     { // matrix_ = shadow_matrix_ * transposed shadow_matrix_
         assert(_size < dimension_);
@@ -308,8 +295,7 @@ private :
 
     // based on LUP decomposition (complexity is (n^3 / 3 + n^2 / 2 - 5 * n / 6) vs (2 * n^3 / 3 + n^2 + n / 3 - 2) for QR decomposition via Householder reflections) http://math.stackexchange.com/a/93508/54348
     value_type
-    det(matrix & _matrix,
-        size_type const _dimension) // hottest function (52% of runtime for D=10)
+    det(matrix & _matrix, size_type const _dimension) // hottest function (52% of runtime for D=10)
     { // calculates lower unit triangular matrix and upper triangular
         assert(0 < _dimension);
         value_type det_ = one;
@@ -361,10 +347,10 @@ private :
     set_hyperplane_equation(facet & _facet)
     {
         for (size_type r = 0; r < dimension_; ++r) {
-            copy(_facet.vertices_[r], shadow_matrix_[r]);
+            copy_point(_facet.vertices_[r], shadow_matrix_[r]);
         }
         matrix_transpose();
-        matrix_ = shadow_matrix_;
+        matrix_restore();
         _facet.D = -det();
         value_type N = zero;
         for (size_type i = 0; i < dimension_; ++i) {
@@ -390,7 +376,7 @@ private :
         auto vertex = std::begin(_affine_space);
         for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
             value_type * const row_ = shadow_matrix_[r];
-            copy(*vertex, row_);
+            copy_point(*vertex, row_);
             subtract(row_, _origin);
             ++vertex;
         }
@@ -463,7 +449,7 @@ private :
         size_type const rank_ = _basis.size() - 1;
         assert(rank_ < dimension_);
         value_type * const origin_ = matrix_[rank_];
-        copy(_basis.back(), origin_);
+        copy_point(_basis.back(), origin_);
         if (!orthonormalize(_basis, rank_, origin_)) {
             return false;
         }
@@ -474,13 +460,13 @@ private :
         auto const oend = std::cend(outside_);
         auto furthest = oend;
         for (auto it = std::cbegin(outside_); it != oend; ++it) {
-            copy(*it, apex_);
+            copy_point(*it, apex_);
             subtract_and_assign(projection_, apex_, origin_); // turn translated space into vector space then project onto orthogonal subspace
             for (size_type i = 0; i < rank_; ++i) {
                 value_type const * const qi_ = matrix_[i];
                 multiply_and_add(projection_, qi_, -std::inner_product(qi_, qi_ + dimension_, apex_, zero));
             }
-            value_type d_ = square_and_accumulate(projection_);
+            value_type d_ = std::inner_product(projection_, projection_ + dimension_, projection_, zero);
             if (distance_ < d_) {
                 distance_ = std::move(d_);
                 furthest = it;
@@ -503,13 +489,15 @@ private :
     {
         if (removed_facets_.empty()) {
             size_type const f = facets_.size();
-            facets_.emplace_back(dimension_, _vertices, _against, _apex, _neighbour);
-            return {facets_.back(), f};
+            facets_.emplace_back();
+            facet & facet_ = facets_.back();
+            make_facet(facet_, _vertices, _against, _apex, _neighbour);
+            return {facet_, f};
         } else {
             size_type const f = removed_facets_.back();
             removed_facets_.pop_back();
             facet & facet_ = facets_[f];
-            facet_.reuse(dimension_, _vertices, _against, _apex, _neighbour);
+            reuse_facet(facet_, _vertices, _against, _apex, _neighbour);
             return {facet_, f};
         }
     }
@@ -765,10 +753,10 @@ public :
         auto const rank_ = static_cast< size_type >(std::distance(first, last));
         assert(!(dimension_ < rank_));
         value_type * const origin_ = shadow_matrix_.back();
-        copy(*last, origin_);
+        copy_point(*last, origin_);
         for (size_type r = 0; r < rank_; ++r) { // affine space -> vector space
             value_type * const row_ = matrix_[r];
-            copy(*first, row_);
+            copy_point(*first, row_);
             subtract(row_, origin_);
             ++first;
         }
@@ -831,7 +819,7 @@ public :
         assert(static_cast< size_type >(std::distance(first, last)) == dimension_);
         assert(facets_.empty());
         {
-            copy(*last, inner_point_);
+            copy_point(*last, inner_point_);
             auto it = first;
             while (it != last) {
                 auto x = std::cbegin(**it);
@@ -846,8 +834,9 @@ public :
         value_type const volume_ = hypervolume(first, last);
         bool const swap_ = (volume_ < zero);
         for (size_type f = 0; f <= dimension_; ++f) {
-            facets_.emplace_back(dimension_, first, f, swap_);
+            facets_.emplace_back();
             facet & facet_ = facets_.back();
+            make_facet(facet_, first, f, swap_);
             set_hyperplane_equation(facet_);
             rank(partition(facet_), f);
         }
@@ -886,6 +875,7 @@ public :
         }
         assert(ranking_meta_.empty());
         compactify();
+        assert(inner_point_ + dimension_ == &storage_.back() + 1);
     }
 
     // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
@@ -895,7 +885,7 @@ public :
     {
         assert(dimension_ < facets_.size());
         size_type facets_count_ = 0;
-        for (facet const & facet_ : facets_) { // check whether the inner point is inside relative to each hull facet or not
+        for (facet const & facet_ : facets_) { // check local convexity of all the facets
             if (!check_local_convexity(facet_, facets_count_)) {
                 return false;
             }
@@ -908,7 +898,7 @@ public :
                 return false; // inner point is not on negative side of the first facet, therefore structure is not convex
             }
         }
-        storage memory_(3 * dimension_ + dimension_ * (dimension_ + 1), zero);
+        vector memory_(3 * dimension_ + dimension_ * (dimension_ + 1), zero);
         value_type * centroid_ = memory_.data();
         value_type * const ray_ = centroid_;
         centroid_ += dimension_;
@@ -923,7 +913,7 @@ public :
         subtract(ray_, inner_point_);
         {
             value_type const dot_product_ = std::inner_product(ray_, ray_ + dimension_, first_.normal_.data(), zero);
-            if (!(zero < dot_product_)) {
+            if (!(zero < dot_product_)) { // ray is parallel to the plane or directed away from the plane
                 return false;
             }
         }
@@ -965,7 +955,7 @@ public :
             for (size_type r = 0; r < dimension_; ++r) {
                 value_type * const gr_ = g_[r];
                 value_type & x_ = centroid_[r];
-                add(gr_, x_);
+                shift(gr_, x_);
                 auto const bounding_box = std::minmax_element(gr_, gr_ + dimension_);
                 x_ = *bounding_box.second - *bounding_box.first;
                 sum_ += x_ * x_;
@@ -973,7 +963,7 @@ public :
             using std::sqrt;
             scale_and_assign(centroid_, facet_.normal_.data(), sqrt(sum_) / (one + one));
             for (size_type r = 0; r < dimension_; ++r) { // shift by half of bounding box main diagonal length in perpendicular to facet direction
-                add(g_[r], centroid_[r]);
+                shift(g_[r], centroid_[r]);
             }
             for (size_type i = 0; i < dimension_; ++i) { // Gaussian elimination
                 value_type * & gi_ = g_[i];
