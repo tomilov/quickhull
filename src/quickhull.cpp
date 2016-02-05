@@ -454,10 +454,12 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     in_.sync_with_stdio(false);
 
 #if 0
+    // RandomAccessIterator
     using value_type = float;
     using point = std::valarray< value_type >;
     using points = std::vector< point >;
 #else
+    // ForwardIterator
     using value_type = double;
     using point = std::forward_list< value_type >;
     using points = std::forward_list< point >;

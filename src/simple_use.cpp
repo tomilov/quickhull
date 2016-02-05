@@ -50,8 +50,8 @@ main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
     std::istream & in_ = (ifs_.is_open() ? ifs_ : std::cin);
     using size_type = std::size_t;
 
-    // select type
-#if 0
+    // select types
+#if 1
     // RandomAccessIterator
     using value_type = float;
     using point = std::valarray< value_type >;

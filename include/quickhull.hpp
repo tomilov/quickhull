@@ -64,6 +64,7 @@ private :
     vector storage_;
     value_type * inner_point_;
     matrix matrix_;
+    matrix det_matrix_;
     matrix shadow_matrix_;
 
 public :
@@ -75,17 +76,18 @@ public :
         , storage_(dimension_ * dimension_ * 2 + dimension_)
         , inner_point_(storage_.data())
         , matrix_(dimension_)
+        , det_matrix_(dimension_)
         , shadow_matrix_(dimension_)
         , vertices_hashes_(dimension_)
     {
         assert(1 < dimension_);
         assert(!(eps < zero));
-        for (size_type r = 0; r < dimension_; ++r) {
-            matrix_[r] = inner_point_;
+        for (value_type * & row_ : matrix_) {
+            row_ = inner_point_;
             inner_point_ += dimension_;
         }
-        for (size_type r = 0; r < dimension_; ++r) {
-            shadow_matrix_[r] = inner_point_;
+        for (value_type * & row_ : shadow_matrix_) {
+            row_ = inner_point_;
             inner_point_ += dimension_;
         }
         assert(inner_point_ + dimension_ == &storage_.back() + 1);
@@ -117,13 +119,13 @@ public :
             return std::inner_product(std::cbegin(normal_), std::cend(normal_), _point, D);
         }
 
-    };
+        value_type
+        cos_of_dihedral_angle(facet const & _facet) const
+        {
+            return std::inner_product(std::cbegin(normal_), std::cend(normal_), std::cbegin(_facet.normal_), value_type(0));
+        }
 
-    value_type
-    cos_of_dihedral_angle(facet const & _this, facet const & _that) const
-    {
-        return std::inner_product(std::cbegin(_this.normal_), std::cend(_this.normal_), std::cbegin(_that.normal_), zero);
-    }
+    };
 
     using facets = std::deque< facet >;
 
@@ -248,13 +250,13 @@ private :
     }
 
     void
-    matrix_transpose()
+    matrix_transpose_copy(point_array const & _vertices)
     {
         for (size_type r = 0; r < dimension_; ++r) {
-            value_type * const row_ = shadow_matrix_[r];
-            for (size_type c = 1 + r; c < dimension_; ++c) {
-                using std::swap;
-                swap(shadow_matrix_[c][r], row_[c]);
+            auto v = std::cbegin(*_vertices[r]);
+            for (size_type c = 0; c < dimension_; ++c) {
+                shadow_matrix_[c][r] = *v;
+                ++v;
             }
         }
     }
@@ -262,13 +264,12 @@ private :
     void
     matrix_restore(size_type const _identity)
     {
-        for (size_type c = 0; c < dimension_; ++c) {
-            value_type * const col_ = matrix_[c];
-            if (c == _identity) {
-                std::fill_n(col_, dimension_, one);
-            } else {
-                std::copy_n(shadow_matrix_[c], dimension_, col_);
-            }
+        for (size_type c = 0; c < _identity; ++c) {
+            std::copy_n(shadow_matrix_[c], dimension_, matrix_[c]);
+        }
+        std::fill_n(matrix_[_identity], dimension_, one);
+        for (size_type c = _identity + 1; c < dimension_; ++c) {
+            std::copy_n(shadow_matrix_[c], dimension_, matrix_[c]);
         }
     }
 
@@ -288,44 +289,46 @@ private :
             value_type * const lhs_ = shadow_matrix_[r];
             value_type const * const row_ = matrix_[r];
             for (size_type c = 0; c < _size; ++c) {
-                lhs_[c] = std::inner_product(row_, row_ + dimension_, matrix_[c], zero);
+                lhs_[c] = std::inner_product(row_, row_ + _size, matrix_[c], zero);
             }
         }
     }
 
     // based on LUP decomposition (complexity is (n^3 / 3 + n^2 / 2 - 5 * n / 6) vs (2 * n^3 / 3 + n^2 + n / 3 - 2) for QR decomposition via Householder reflections) http://math.stackexchange.com/a/93508/54348
     value_type
-    det(matrix & _matrix, size_type const _dimension) // hottest function (52% of runtime for D=10)
+    det(matrix const & _matrix, size_type const _dimension) // hottest function (52% of runtime for D=10)
     { // calculates lower unit triangular matrix and upper triangular
         assert(0 < _dimension);
         value_type det_ = one;
+        std::copy_n(std::cbegin(_matrix), _dimension, std::begin(det_matrix_));
         for (size_type i = 0; i < _dimension; ++i) {
-            value_type * & mi_ = _matrix[i];
+            value_type * & mi_ = det_matrix_[i];
             size_type pivot = i;
             {
                 using std::abs;
                 value_type max_ = abs(mi_[i]);
                 size_type j = i;
                 while (++j < _dimension) {
-                    value_type y_ = abs(_matrix[j][i]);
+                    value_type y_ = abs(det_matrix_[j][i]);
                     if (max_ < y_) {
                         max_ = std::move(y_);
                         pivot = j;
                     }
                 }
                 if (!(eps < max_)) { // regular?
-                    return zero; // singular
+                    det_ = zero; // singular
+                    break;
                 }
             }
             if (pivot != i) {
                 det_ = -det_; // each permutation flips sign of det
-                std::swap(mi_, _matrix[pivot]);
+                std::swap(mi_, det_matrix_[pivot]);
             }
             value_type const & dia_ = mi_[i];
             det_ *= dia_; // det is multiple of diagonal elements
             size_type j = i;
             while (++j < _dimension) {
-                value_type * const mj_ = _matrix[j];
+                value_type * const mj_ = det_matrix_[j];
                 value_type & mji_ = mj_[i];
                 mji_ /= dia_;
                 size_type k = i;
@@ -346,10 +349,7 @@ private :
     void
     set_hyperplane_equation(facet & _facet)
     {
-        for (size_type r = 0; r < dimension_; ++r) {
-            copy_point(_facet.vertices_[r], shadow_matrix_[r]);
-        }
-        matrix_transpose();
+        matrix_transpose_copy(_facet.vertices_);
         matrix_restore();
         _facet.D = -det();
         value_type N = zero;
@@ -721,7 +721,7 @@ private :
         assert(&facets_[f] == &facet_);
         for (size_type const n : facet_.neighbours_) {
             facet const & neighbour_ = facets_[n];
-            if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoid roundoff error
+            if (facet_.cos_of_dihedral_angle(neighbour_) < one) { // avoid roundoff error
                 for (size_type v = 0; v < dimension_; ++v) {
                     if (neighbour_.neighbours_[v] == f) { // vertex v of neigbour_ facet is opposite to facet_
                         value_type const distance_ = facet_.distance(std::cbegin(*neighbour_.vertices_[v]));
@@ -875,7 +875,6 @@ public :
         }
         assert(ranking_meta_.empty());
         compactify();
-        assert(inner_point_ + dimension_ == &storage_.back() + 1);
     }
 
     // Kurt Mehlhorn, Stefan Näher, Thomas Schilz, Stefan Schirra, Michael Seel, Raimund Seidel, and Christian Uhrig.
