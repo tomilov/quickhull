@@ -45,7 +45,8 @@ template< typename point_iterator,
 struct quick_hull
 {
 
-    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >{});
+    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >{},
+                  "multipass guarantee required");
 
     using size_type = std::size_t;
 

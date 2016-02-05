@@ -33,19 +33,21 @@
 #endif
 
 int
-main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
+main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
 {
+    std::ostream & err_ = std::cerr;
+    std::ostream & log_ = std::clog;
+
     // choose input source
     std::ifstream ifs_;
     if (argc == 2) {
         ifs_.open(argv[1]);
         if (!ifs_.is_open()) {
-            std::cerr << "error: cannot open file '" << argv[1] << "'" << std::endl;
+            err_ << "error: cannot open file '" << argv[1] << "'" << std::endl;
             return EXIT_FAILURE;
         }
     }
     std::istream & in_ = (ifs_.is_open() ? ifs_ : std::cin);
-
     using size_type = std::size_t;
 
     // select type
@@ -61,60 +63,57 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     using points = std::forward_list< point >;
 #endif
 
-    // input data
-    size_type dimension_ = 0;
-    size_type count_ = 0;
-    points points_;
-
     std::string line_;
     std::istringstream iss_;
 
-    // input a data (fill a container with points)
+    // fill container with points
+    size_type dimension_ = 0;
     {
         if (!std::getline(in_, line_)) {
-            std::cerr << "error: input: missing dimension line" << std::endl;
+            err_ << "error: input: missing dimension line" << std::endl;
             return false;
         }
         iss_.str(line_);
         if (!(iss_ >> dimension_)) {
-            std::cerr << "error: input: dimension format" << std::endl;
+            err_ << "error: input: dimension format" << std::endl;
             return false;
         }
-        std::clog << "dimensionality of input is " << dimension_ << std::endl;
+        log_ << "dimensionality of input is " << dimension_ << std::endl;
         if (!(1 < dimension_)) {
-            std::cerr << "error: input: dimensionality value is not greater then one" << std::endl;
+            err_ << "error: input: dimensionality value is not greater then one" << std::endl;
             return false;
         }
         {
             using char_type = typename std::istream::char_type;
-            std::clog << "rbox command line:";
+            log_ << "rbox command line:";
             std::istreambuf_iterator< char_type > const ibeg(iss_), iend;
-            std::copy(ibeg, iend, std::ostreambuf_iterator< char_type >(std::clog));
-            std::clog << std::endl;
+            std::copy(ibeg, iend, std::ostreambuf_iterator< char_type >(log_));
+            log_ << std::endl;
         }
         iss_.clear();
     }
+    size_type count_ = 0;
     {
         if (!std::getline(in_, line_)) {
-            std::cerr << "error: input: missing count line" << std::endl;
+            err_ << "error: input: missing count line" << std::endl;
             return false;
         }
         iss_.str(line_);
         if (!(iss_ >> count_)) {
-            std::cerr << "error: input: format of count" << std::endl;
+            err_ << "error: input: format of count" << std::endl;
             return false;
         }
         iss_.clear();
-        std::clog << "input points count = " << count_ << std::endl;
+        log_ << "input points count = " << count_ << std::endl;
         if (!(dimension_ < count_)) {
-            std::cerr << "error: input: points count is not greater then dimensionality" << std::endl;
+            err_ << "error: input: points count is not greater then dimensionality" << std::endl;
             return false;
         }
     }
-    points_ = points(count_);
+    points points_(count_);
     for (point & point_ : points_) {
         if (!std::getline(in_, line_)) {
-            std::cerr << "error: input: wrong line count" << std::endl;
+            err_ << "error: input: wrong line count" << std::endl;
             return false;
         }
         point_.resize(dimension_);
@@ -123,7 +122,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
             auto c = std::begin(point_);
             for (size_type j = 0; j < dimension_; ++j) {
                 if (!(iss_ >> *c)) {
-                    std::cerr << "error: input: bad corodinate value at line " << j << " of data" << std::endl;
+                    err_ << "error: input: bad corodinate value at line " << j << " of data" << std::endl;
                     return false;
                 }
                 ++c;
@@ -133,9 +132,9 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     }
 
     // set epsilon (can be zero)
-    value_type const zero = value_type(0);
+    //value_type const zero = value_type(0);
     value_type const eps = std::numeric_limits< value_type >::epsilon();
-    std::clog << "epsilon = " << eps << std::endl;
+    log_ << "epsilon = " << eps << std::endl;
 
     // define and setup QH class instance
     using quick_hull_type = quick_hull< typename points::const_iterator >;
@@ -152,10 +151,10 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
         quick_hull_.create_initial_simplex(std::cbegin(initial_simplex_),
                                            std::prev(std::cend(initial_simplex_))); // (4)
         auto const delta = duration_cast< microseconds >(steady_clock::now() - start).count();
-        std::clog << "simplex time = " << delta << "us" << std::endl;
+        log_ << "simplex time = " << delta << "us" << std::endl;
         size_type const basis_size_ = initial_simplex_.size();
         if (basis_size_ != quick_hull_.dimension_ + 1) { // (5)
-            std::cerr << "error: algorithm: cannot construct a simplex. Degenerated input set. Size of basis: "
+            err_ << "error: algorithm: cannot construct a simplex. Degenerated input set. Size of basis: "
                       << basis_size_ << std::endl;
             return false;
         }
@@ -164,15 +163,15 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
         steady_clock::time_point const start = steady_clock::now();
         quick_hull_.create_convex_hull(); // (6)
         auto const delta = duration_cast< microseconds >(steady_clock::now() - start).count();
-        std::clog << "quickhull time = "
+        log_ << "quickhull time = "
                   << TERM_COLOR_GREEN << delta << "us"
                   << TERM_COLOR_DEFAULT << std::endl;
     }
-    std::clog << "number of (convex hull) polyhedron facets is "
+    log_ << "number of (convex hull) polyhedron facets is "
               << TERM_COLOR_BLUE << quick_hull_.facets_.size()
               << TERM_COLOR_DEFAULT << std::endl;
     if (!quick_hull_.check()) {
-        std::cerr << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope"
+        err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope"
                   << TERM_COLOR_DEFAULT << std::endl;
         return false;
     }
@@ -180,7 +179,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     // output
     std::ostream & gnuplot_ = std::cout;
     if (3 < quick_hull_.dimension_) {
-        std::clog << "dimensionality value " << quick_hull_.dimension_
+        log_ << "dimensionality value " << quick_hull_.dimension_
                   << " is out of supported range: cannot generate output for this" << std::endl;
         return EXIT_SUCCESS;
     }
@@ -207,7 +206,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     }
     gnuplot_ << ";\n";
     {
-        for (auto const v : initial_simplex_) {
+        for (auto const & v : initial_simplex_) {
             point const & point_ = *v;
             for (value_type const & coordinate_ : point_) {
                 gnuplot_ << coordinate_ << ' ';
@@ -236,7 +235,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
     }
     for (auto const & facet_ : quick_hull_.facets_) {
         auto const & vertices_ = facet_.vertices_;
-        for (auto const vertex_ : vertices_) {
+        for (auto const & vertex_ : vertices_) {
             for (value_type const & coordinate_ : *vertex_) {
                 gnuplot_ << coordinate_ << ' ';
             }
@@ -248,7 +247,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
         gnuplot_ << "\n"
                     "e\n";
         if (!facet_.coplanar_.empty()) {
-            for (auto const v : facet_.coplanar_) {
+            for (auto const & v : facet_.coplanar_) {
                 for (value_type const & coordinate_ : *v) {
                     gnuplot_ << coordinate_ << ' ';
                 }
