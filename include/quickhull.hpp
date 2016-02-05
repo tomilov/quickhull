@@ -44,7 +44,7 @@ template< typename point_iterator,
 struct quick_hull
 {
 
-    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >{},
+    static_assert(std::is_base_of< std::forward_iterator_tag, typename std::iterator_traits< point_iterator >::iterator_category >::value,
                   "multipass guarantee required");
 
     using size_type = std::size_t;
@@ -59,10 +59,12 @@ struct quick_hull
 
 private :
 
-    using matrix = std::vector< value_type * >;
+    using vrow = value_type *;
+    using crow = value_type const *;
+    using matrix = std::vector< vrow >;
 
     vector storage_;
-    value_type * inner_point_;
+    vrow inner_point_;
     matrix matrix_;
     matrix det_matrix_;
     matrix shadow_matrix_;
@@ -82,11 +84,11 @@ public :
     {
         assert(1 < dimension_);
         assert(!(eps < zero));
-        for (value_type * & row_ : matrix_) {
+        for (vrow & row_ : matrix_) {
             row_ = inner_point_;
             inner_point_ += dimension_;
         }
-        for (value_type * & row_ : shadow_matrix_) {
+        for (vrow & row_ : shadow_matrix_) {
             row_ = inner_point_;
             inner_point_ += dimension_;
         }
@@ -116,6 +118,8 @@ public :
         value_type
         distance(iterator const & _point) const
         {
+            using iterator_traits = std::iterator_traits< iterator >;
+            static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
             return std::inner_product(std::cbegin(normal_), std::cend(normal_), _point, D);
         }
 
@@ -155,6 +159,9 @@ private :
                size_type const _vertex,
                bool const _swap)
     {
+        using iterator_traits = std::iterator_traits< iterator >;
+        static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value);
         _facet.vertices_.reserve(dimension_);
         _facet.neighbours_.reserve(dimension_);
         for (size_type v = 0; v <= dimension_; ++v) {
@@ -188,13 +195,13 @@ private :
     }
 
     void
-    copy_point(point_iterator const & _from, value_type * _to) const
+    copy_point(point_iterator const & _from, vrow _to) const
     {
         std::copy_n(std::cbegin(*_from), dimension_, _to);
     }
 
     void
-    subtract(value_type * _minuend, value_type const * _subtrahend) const
+    subtract(vrow _minuend, crow _subtrahend) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
             *_minuend++ -= *_subtrahend++;
@@ -202,7 +209,7 @@ private :
     }
 
     void
-    shift(value_type * _augend, value_type const & _addend) const
+    shift(vrow _augend, value_type const & _addend) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
             *_augend++ += _addend;
@@ -210,7 +217,7 @@ private :
     }
 
     void
-    divide(value_type * _dividend, value_type const & _divisor) const
+    divide(vrow _dividend, value_type const & _divisor) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
             *_dividend++ /= _divisor;
@@ -218,7 +225,7 @@ private :
     }
 
     void
-    scale_and_assign(value_type * _assignee, value_type const * _multiplicand, value_type const & _factor) const
+    scale_and_assign(vrow _assignee, crow _multiplicand, value_type const & _factor) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
             *_assignee++ = (*_multiplicand++ * _factor);
@@ -226,7 +233,7 @@ private :
     }
 
     void
-    subtract_and_assign(value_type * _assignee, value_type * _minuend, value_type const * _subtrahend) const
+    subtract_and_assign(vrow _assignee, vrow _minuend, crow _subtrahend) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
             *_assignee++ = (*_minuend++ -= *_subtrahend++);
@@ -234,7 +241,7 @@ private :
     }
 
     void
-    multiply_and_add(value_type * _assignee, value_type const * _multiplicand, value_type const & _factor) const
+    multiply_and_add(vrow _assignee, crow _multiplicand, value_type const & _factor) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
             *_assignee++ += (*_multiplicand++ * _factor);
@@ -242,7 +249,7 @@ private :
     }
 
     void
-    scale_and_shift(value_type * _multiplicand, value_type const * _direction, value_type const & _factor) const
+    scale_and_shift(vrow _multiplicand, crow _direction, value_type const & _factor) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
             (*_multiplicand++ *= _factor) += *_direction++;
@@ -286,8 +293,8 @@ private :
     { // matrix_ = shadow_matrix_ * transposed shadow_matrix_
         assert(_size < dimension_);
         for (size_type r = 0; r < _size; ++r) {
-            value_type * const lhs_ = shadow_matrix_[r];
-            value_type const * const row_ = matrix_[r];
+            vrow const lhs_ = shadow_matrix_[r];
+            crow const row_ = matrix_[r];
             for (size_type c = 0; c < _size; ++c) {
                 lhs_[c] = std::inner_product(row_, row_ + _size, matrix_[c], zero);
             }
@@ -302,7 +309,7 @@ private :
         value_type det_ = one;
         std::copy_n(std::cbegin(_matrix), _dimension, std::begin(det_matrix_));
         for (size_type i = 0; i < _dimension; ++i) {
-            value_type * & mi_ = det_matrix_[i];
+            vrow & mi_ = det_matrix_[i];
             size_type pivot = i;
             {
                 using std::abs;
@@ -328,7 +335,7 @@ private :
             det_ *= dia_; // det is multiple of diagonal elements
             size_type j = i;
             while (++j < _dimension) {
-                value_type * const mj_ = det_matrix_[j];
+                vrow const mj_ = det_matrix_[j];
                 value_type & mji_ = mj_[i];
                 mji_ /= dia_;
                 size_type k = i;
@@ -369,20 +376,20 @@ private :
     bool
     orthonormalize(point_list const & _affine_space,
                    size_type const _rank,
-                   value_type const * const _origin)
+                   crow const _origin)
     {
         assert(!(dimension_ < _rank));
         assert(!(_affine_space.size() < _rank));
         auto vertex = std::begin(_affine_space);
         for (size_type r = 0; r < _rank; ++r) { // affine space -> vector space
-            value_type * const row_ = shadow_matrix_[r];
+            vrow const row_ = shadow_matrix_[r];
             copy_point(*vertex, row_);
             subtract(row_, _origin);
             ++vertex;
         }
         for (size_type i = 0; i < _rank; ++i) { // Householder transformation
             value_type sum_ = zero;
-            value_type * const qri_ = shadow_matrix_[i];
+            vrow const qri_ = shadow_matrix_[i];
             for (size_type k = i; k < dimension_; ++k) {
                 value_type const & qrik_ = qri_[k];
                 sum_ += qrik_ * qrik_;
@@ -406,7 +413,7 @@ private :
             }
             size_type j = i;
             while (++j < _rank) {
-                value_type * const qrj_ = shadow_matrix_[j];
+                vrow const qrj_ = shadow_matrix_[j];
                 value_type s_ = zero;
                 for (size_type k = i; k < dimension_; ++k) {
                     s_ += qri_[k] * qrj_[k];
@@ -424,13 +431,13 @@ private :
     {
         assert(!(dimension_ < _rank));
         for (size_type i = 0; i < _rank; ++i) {
-            value_type * const qi_ = matrix_[i];
+            vrow const qi_ = matrix_[i];
             std::fill_n(qi_, dimension_, zero);
             qi_[i] = one;
             size_type j = _rank;
             while (0 < j) {
                 --j;
-                value_type * const qrj_ = shadow_matrix_[j]; // containing packed QR
+                vrow const qrj_ = shadow_matrix_[j]; // containing packed QR
                 value_type s_ = zero;
                 for (size_type k = j; k < dimension_; ++k) {
                     s_ += qrj_[k] * qi_[k];
@@ -448,14 +455,14 @@ private :
         assert(!_basis.empty());
         size_type const rank_ = _basis.size() - 1;
         assert(rank_ < dimension_);
-        value_type * const origin_ = matrix_[rank_];
+        vrow const origin_ = matrix_[rank_];
         copy_point(_basis.back(), origin_);
         if (!orthonormalize(_basis, rank_, origin_)) {
             return false;
         }
         forward_transformation(rank_);
-        value_type * const projection_ = shadow_matrix_.back();
-        value_type * const apex_ = shadow_matrix_.front();
+        vrow const projection_ = shadow_matrix_.back();
+        vrow const apex_ = shadow_matrix_.front();
         value_type distance_ = zero; // square of distance to the subspace
         auto const oend = std::cend(outside_);
         auto furthest = oend;
@@ -463,7 +470,7 @@ private :
             copy_point(*it, apex_);
             subtract_and_assign(projection_, apex_, origin_); // turn translated space into vector space then project onto orthogonal subspace
             for (size_type i = 0; i < rank_; ++i) {
-                value_type const * const qi_ = matrix_[i];
+                crow const qi_ = matrix_[i];
                 multiply_and_add(projection_, qi_, -std::inner_product(qi_, qi_ + dimension_, apex_, zero));
             }
             value_type d_ = std::inner_product(projection_, projection_ + dimension_, projection_, zero);
@@ -745,17 +752,17 @@ public :
                 iterator const & last) // hypervolume of parallelotope spanned on vectors from last vertex (vlast) to all the vertices lies in [vfirst, vlast)
     {
         using iterator_traits = std::iterator_traits< iterator >;
-        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >{});
-        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >{});
+        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >::value);
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value);
         if (first == last) {
             return zero;
         }
         auto const rank_ = static_cast< size_type >(std::distance(first, last));
         assert(!(dimension_ < rank_));
-        value_type * const origin_ = shadow_matrix_.back();
+        vrow const origin_ = shadow_matrix_.back();
         copy_point(*last, origin_);
         for (size_type r = 0; r < rank_; ++r) { // affine space -> vector space
-            value_type * const row_ = matrix_[r];
+            vrow const row_ = matrix_[r];
             copy_point(*first, row_);
             subtract(row_, origin_);
             ++first;
@@ -785,8 +792,8 @@ public :
                iterator const & end) // [beg; end)
     {
         using iterator_traits = std::iterator_traits< iterator >;
-        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >{});
-        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >{});
+        static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value);
         std::copy(beg, end, std::back_inserter(outside_));
     }
 
@@ -814,8 +821,8 @@ public :
                            iterator const & last) // [bfirst; blast]
     {
         using iterator_traits = std::iterator_traits< iterator >;
-        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >{});
-        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >{});
+        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >::value);
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value);
         assert(static_cast< size_type >(std::distance(first, last)) == dimension_);
         assert(facets_.empty());
         {
@@ -898,8 +905,8 @@ public :
             }
         }
         vector memory_(3 * dimension_ + dimension_ * (dimension_ + 1), zero);
-        value_type * centroid_ = memory_.data();
-        value_type * const ray_ = centroid_;
+        vrow centroid_ = memory_.data();
+        vrow const ray_ = centroid_;
         centroid_ += dimension_;
         for (point_iterator const & v : first_.vertices_) {
             auto x = std::cbegin(*v);
@@ -917,11 +924,11 @@ public :
             }
         }
         matrix g_(dimension_); // storage (d * (d + 1)) for Gaussian elimination with partial pivoting
-        for (value_type * & row_ : g_) {
+        for (vrow & row_ : g_) {
             row_ = centroid_;
             centroid_ += (dimension_ + 1);
         }
-        value_type * const intersection_point_ = centroid_;
+        vrow const intersection_point_ = centroid_;
         centroid_ += dimension_;
         assert(centroid_ + dimension_ == &memory_.back() + 1);
         for (size_type f = 1; f < facets_count_; ++f) {
@@ -945,14 +952,14 @@ public :
                 }
             }
             for (size_type r = 0; r < dimension_; ++r) {
-                value_type * const gr_ = g_[r];
+                vrow const gr_ = g_[r];
                 gr_[dimension_] = intersection_point_[r];
                 centroid_[r] = -std::accumulate(gr_, gr_ + dimension_, zero);
             }
             divide(centroid_, value_type(dimension_ + 1));
             value_type sum_ = zero;
             for (size_type r = 0; r < dimension_; ++r) {
-                value_type * const gr_ = g_[r];
+                vrow const gr_ = g_[r];
                 value_type & x_ = centroid_[r];
                 shift(gr_, x_);
                 auto const bounding_box = std::minmax_element(gr_, gr_ + dimension_);
@@ -965,7 +972,7 @@ public :
                 shift(g_[r], centroid_[r]);
             }
             for (size_type i = 0; i < dimension_; ++i) { // Gaussian elimination
-                value_type * & gi_ = g_[i];
+                vrow & gi_ = g_[i];
                 value_type max_ = abs(gi_[i]);
                 size_type pivot = i;
                 {
@@ -984,7 +991,7 @@ public :
                 }
                 value_type & gii_ = gi_[i];
                 for (size_type j = i + 1; j < dimension_; ++j) {
-                    value_type * const gj_ = g_[j];
+                    vrow const gj_ = g_[j];
                     value_type & gji_ = gj_[i];
                     gji_ /= gii_;
                     for (size_type k = i + 1; k <= dimension_; ++k) {
@@ -998,7 +1005,7 @@ public :
                 size_type i = dimension_;
                 while (0 < i) {
                     --i;
-                    value_type * const gi_ = g_[i];
+                    vrow const gi_ = g_[i];
                     value_type & xi_ = gi_[dimension_];
                     for (size_type j = i + 1; j < dimension_; ++j) {
                         xi_ -= gi_[j] * g_[j][dimension_];

@@ -51,7 +51,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
     using size_type = std::size_t;
 
     // select types
-#if 1
+#if 0
     // RandomAccessIterator
     using value_type = float;
     using point = std::valarray< value_type >;
