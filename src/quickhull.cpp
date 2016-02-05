@@ -315,7 +315,7 @@ struct test_quickhull
             }
             _out << ";\n";
             {
-                for (auto const v : initial_simplex_) {
+                for (auto const & v : initial_simplex_) {
                     point const & point_ = *v;
                     for (value_type const & coordinate_ : point_) {
                         _out << coordinate_ << ' ';
@@ -346,9 +346,9 @@ struct test_quickhull
             }
             for (auto const & facet_ : quick_hull_.facets_) {
                 auto const & vertices_ = facet_.vertices_;
-                for (auto const vertex_ : vertices_) {
+                for (auto const & vertex_ : vertices_) {
                     for (value_type const & coordinate_ : *vertex_) {
-                        _out << coordiboolnate_ << ' ';
+                        _out << coordinate_ << ' ';
                     }
                     _out << '\n';
                 }
@@ -358,7 +358,7 @@ struct test_quickhull
                 _out << "\n"
                         "e\n";
                 if (!facet_.coplanar_.empty()) {
-                    for (auto const v : facet_.coplanar_) {
+                    for (auto const & v : facet_.coplanar_) {
                         for (value_type const & coordinate_ : *v) {
                             _out << coordinate_ << ' ';
                         }

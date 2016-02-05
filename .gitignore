@@ -1,8 +1,2 @@
-*.pro.user
-Makefile
-Makefile.Debug
-Makefile.Release
-debug/
-release/
-*.o
+CMakeFiles/
 CMakeLists.txt.user
