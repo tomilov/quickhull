@@ -752,19 +752,20 @@ public :
                 iterator const & last) // hypervolume of parallelotope spanned on vectors from last vertex (vlast) to all the vertices lies in [vfirst, vlast)
     {
         using iterator_traits = std::iterator_traits< iterator >;
-        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >::value);
+        static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
         static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value);
         if (first == last) {
             return zero;
         }
-        auto const rank_ = static_cast< size_type >(std::distance(first, last));
-        assert(!(dimension_ < rank_));
         vrow const origin_ = shadow_matrix_.back();
         copy_point(*last, origin_);
-        for (size_type r = 0; r < rank_; ++r) { // affine space -> vector space
-            vrow const row_ = matrix_[r];
+        size_type rank_ = 0;
+        while (first != last) { // affine space -> vector space
+            assert(rank_ < dimension_);
+            vrow const row_ = matrix_[rank_];
             copy_point(*first, row_);
             subtract(row_, origin_);
+            ++rank_;
             ++first;
         }
         if (rank_ == dimension_) {
