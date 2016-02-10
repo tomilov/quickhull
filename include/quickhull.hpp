@@ -209,9 +209,9 @@ private :
     }
 
     void
-    shift(vrow _augend, value_type const & _addend) const
+    gshift(vrow _augend, value_type const & _addend) const // shift Gaussian row
     {
-        for (size_type i = 0; i < dimension_; ++i) {
+        for (size_type i = 0; i <= dimension_; ++i) {
             *_augend++ += _addend;
         }
     }
@@ -290,7 +290,7 @@ private :
 
     void
     matrix_sqr(size_type const _size)
-    { // matrix_ = shadow_matrix_ * transposed shadow_matrix_
+    { // shadow_matrix_ = matrix_ * transposed matrix_
         assert(_size < dimension_);
         for (size_type r = 0; r < _size; ++r) {
             vrow const lhs_ = shadow_matrix_[r];
@@ -301,10 +301,10 @@ private :
         }
     }
 
-    // based on LUP decomposition (complexity is (n^3 / 3 + n^2 / 2 - 5 * n / 6) vs (2 * n^3 / 3 + n^2 + n / 3 - 2) for QR decomposition via Householder reflections) http://math.stackexchange.com/a/93508/54348
+    // based on LUP decomposition (complexity is (d^3 / 3 + d^2 / 2 - 5 * d / 6) vs (2 * d^3 / 3 + d^2 + d / 3 - 2) for QR decomposition via Householder reflections)
     value_type
-    det(matrix const & _matrix, size_type const _dimension) // hottest function (52% of runtime for D=10)
-    { // calculates lower unit triangular matrix and upper triangular
+    det(matrix const & _matrix, size_type const _dimension) // hottest function (52% of runtime for D10)
+    { // det_matrix_ contains lower unit triangular matrix and upper triangular at return
         assert(0 < _dimension);
         value_type det_ = one;
         std::copy_n(std::cbegin(_matrix), _dimension, std::begin(det_matrix_));
@@ -435,8 +435,7 @@ private :
             std::fill_n(qi_, dimension_, zero);
             qi_[i] = one;
             size_type j = _rank;
-            while (0 < j) {
-                --j;
+            while (0 < j--) {
                 vrow const qrj_ = shadow_matrix_[j]; // containing packed QR
                 value_type s_ = zero;
                 for (size_type k = j; k < dimension_; ++k) {
@@ -451,7 +450,7 @@ private :
 
     bool
     steal_best(point_list & _basis)
-    { // move point from "outside_" set to "_basis" set which is furthest from affine subspace formed by points of "_basis" set
+    { // from "outside_" set to "_basis" set moves a point which is furthest from affine subspace formed by points of "_basis" set
         assert(!_basis.empty());
         size_type const rank_ = _basis.size() - 1;
         assert(rank_ < dimension_);
@@ -962,15 +961,16 @@ public :
             for (size_type r = 0; r < dimension_; ++r) {
                 vrow const gr_ = g_[r];
                 value_type & x_ = centroid_[r];
-                shift(gr_, x_);
+                gshift(gr_, x_); // after this shift all vertices of the facet and intersection point are significally different from the origin
                 auto const bounding_box = std::minmax_element(gr_, gr_ + dimension_);
                 x_ = *bounding_box.second - *bounding_box.first;
                 sum_ += x_ * x_;
             }
             using std::sqrt;
             scale_and_assign(centroid_, facet_.normal_.data(), sqrt(sum_) / (one + one));
-            for (size_type r = 0; r < dimension_; ++r) { // shift by half of bounding box main diagonal length in perpendicular to facet direction
-                shift(g_[r], centroid_[r]);
+            for (size_type r = 0; r < dimension_; ++r) { // shift by half of bounding box main diagonal length in perpendicular to the facet direction
+                vrow const gr_ = g_[r];
+                gshift(gr_, centroid_[r]);
             }
             for (size_type i = 0; i < dimension_; ++i) { // Gaussian elimination
                 vrow & gi_ = g_[i];
@@ -1004,8 +1004,7 @@ public :
             bool in_range_ = true;
             {
                 size_type i = dimension_;
-                while (0 < i) {
-                    --i;
+                while (0 < i--) {
                     vrow const gi_ = g_[i];
                     value_type & xi_ = gi_[dimension_];
                     for (size_type j = i + 1; j < dimension_; ++j) {

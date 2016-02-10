@@ -56,4 +56,5 @@ add_executable("${PROJECT_NAME}" "src/quickhull.cpp"  "include/quickhull.hpp")
 add_executable("qh"              "src/simple_use.cpp" "include/quickhull.hpp")
 
 set(CMAKE_INSTALL_PREFIX "${PROJECT_SOURCE_DIR}")
-install(TARGETS "${PROJECT_NAME}" "qh" RUNTIME DESTINATION "bin/")
+install(TARGETS "${PROJECT_NAME}" RUNTIME DESTINATION "bin/")
+install(TARGETS "qh" RUNTIME DESTINATION "bin/")
