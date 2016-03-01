@@ -1,4 +1,4 @@
-project(quickhull)
+project("quickhull")
 
 cmake_minimum_required(VERSION 3.1 FATAL_ERROR)
 
@@ -55,6 +55,8 @@ include_directories("include/")
 add_executable("${PROJECT_NAME}" "src/quickhull.cpp"  "include/quickhull.hpp")
 add_executable("qh"              "src/simple_use.cpp" "include/quickhull.hpp")
 
+#[[
 set(CMAKE_INSTALL_PREFIX "${PROJECT_SOURCE_DIR}")
 install(TARGETS "${PROJECT_NAME}" RUNTIME DESTINATION "bin/")
 install(TARGETS "qh" RUNTIME DESTINATION "bin/")
+]]
