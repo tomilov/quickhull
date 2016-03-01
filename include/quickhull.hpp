@@ -225,14 +225,6 @@ private :
     }
 
     void
-    scale_and_assign(vrow _assignee, crow _multiplicand, value_type const & _factor) const
-    {
-        for (size_type i = 0; i < dimension_; ++i) {
-            *_assignee++ = (*_multiplicand++ * _factor);
-        }
-    }
-
-    void
     subtract_and_assign(vrow _assignee, vrow _minuend, crow _subtrahend) const
     {
         for (size_type i = 0; i < dimension_; ++i) {
@@ -953,22 +945,17 @@ public :
             }
             for (size_type r = 0; r < dimension_; ++r) {
                 vrow const gr_ = g_[r];
-                centroid_[r] = -std::accumulate(gr_, gr_ + dimension_, zero);
+                centroid_[r] = -std::accumulate(gr_, gr_ + dimension_, zero) / value_type(dimension_);
                 gr_[dimension_] = intersection_point_[r];
             }
-            divide(centroid_, value_type(dimension_));
-            value_type sum_ = zero;
             for (size_type r = 0; r < dimension_; ++r) {
                 vrow const gr_ = g_[r];
                 value_type & x_ = centroid_[r];
                 gshift(gr_, x_);
-                //assert(!(eps * dimension_ < std::accumulate(gr_, gr_ + dimension_, zero))); // now center of the facet coincides with the origin, but no one vertex does
+                //assert(!(eps * value_type(dimension_) < std::accumulate(gr_, gr_ + dimension_, zero))); // now center of the facet coincides with the origin, but no one vertex does
                 auto const bounding_box = std::minmax_element(gr_, gr_ + dimension_);
                 x_ = *bounding_box.second - *bounding_box.first;
-                sum_ += x_ * x_;
             }
-            using std::sqrt;
-            scale_and_assign(centroid_, facet_.normal_.data(), sqrt(sum_) / (one + one));
             for (size_type r = 0; r < dimension_; ++r) { // shift by half of bounding box main diagonal length in perpendicular to the facet direction
                 vrow const gr_ = g_[r];
                 gshift(gr_, centroid_[r]);
