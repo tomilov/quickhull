@@ -953,15 +953,16 @@ public :
             }
             for (size_type r = 0; r < dimension_; ++r) {
                 vrow const gr_ = g_[r];
-                gr_[dimension_] = intersection_point_[r];
                 centroid_[r] = -std::accumulate(gr_, gr_ + dimension_, zero);
+                gr_[dimension_] = intersection_point_[r];
             }
-            divide(centroid_, value_type(dimension_ + 1));
+            divide(centroid_, value_type(dimension_));
             value_type sum_ = zero;
             for (size_type r = 0; r < dimension_; ++r) {
                 vrow const gr_ = g_[r];
                 value_type & x_ = centroid_[r];
-                gshift(gr_, x_); // after this shift all vertices of the facet and intersection point are significally different from the origin
+                gshift(gr_, x_);
+                //assert(!(eps * dimension_ < std::accumulate(gr_, gr_ + dimension_, zero))); // now center of the facet coincides with the origin, but no one vertex does
                 auto const bounding_box = std::minmax_element(gr_, gr_ + dimension_);
                 x_ = *bounding_box.second - *bounding_box.first;
                 sum_ += x_ * x_;
