@@ -955,8 +955,11 @@ public :
                 //assert(!(eps * value_type(dimension_) < std::accumulate(gr_, gr_ + dimension_, zero))); // now center of the facet coincides with the origin, but no one vertex does
                 auto const bounding_box = std::minmax_element(gr_, gr_ + dimension_);
                 x_ = *bounding_box.second - *bounding_box.first;
+                if (!(eps * value_type(dimension_) < x_)) {
+                    x_ = one;
+                }
             }
-            for (size_type r = 0; r < dimension_; ++r) { // shift by half of bounding box main diagonal length in perpendicular to the facet direction
+            for (size_type r = 0; r < dimension_; ++r) {
                 vrow const gr_ = g_[r];
                 gshift(gr_, centroid_[r]);
             }

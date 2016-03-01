@@ -180,7 +180,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
     std::ostream & gnuplot_ = std::cout;
     if (3 < quick_hull_.dimension_) {
         log_ << "dimensionality value " << quick_hull_.dimension_
-                  << " is out of supported range: cannot generate output for this" << std::endl;
+                  << " is out of supported range: cannot generate output" << std::endl;
         return EXIT_SUCCESS;
     }
     gnuplot_ << "set view equal xyz\n"

@@ -280,7 +280,7 @@ struct test_quickhull
         {
             if (operator bool ()) {
                 log_ << "dimensionality value " << quick_hull_.dimension_
-                     << " is out of supported range: cannot generate output for this" << std::endl;
+                     << " is out of supported range: cannot generate output" << std::endl;
                 return false;
             }
             if (f) {
