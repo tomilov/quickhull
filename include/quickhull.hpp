@@ -71,6 +71,8 @@ private :
 
 public :
 
+    quick_hull(size_type, value_type const &&) = delete; // bind eps to lvalue only
+
     quick_hull(size_type const _dimension,
                value_type const & _eps)
         : dimension_(_dimension)
