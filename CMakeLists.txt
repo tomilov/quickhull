@@ -32,14 +32,14 @@ add_compile_options(-W -Weverything -Wmissing-include-dirs -Wconversion -Wmismat
 add_compile_options(-Wno-gnu-anonymous-struct -Wno-nested-anon-types)
 #add_compile_options(-ftime-report)
 
-set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -fno-inline -DDEBUG=1 -D_DEBUG=1 -D_GLIBCXX_DEBUG=1 -march=x86-64 -mtune=generic")
+set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -fno-inline -DDEBUG=1 -D_DEBUG=1 -D_GLIBCXX_DEBUG=1")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG=1 -march=native")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG=1")
 elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -gline-tables-only -DNDEBUG=1 -march=native")
+    set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -gline-tables-only -DNDEBUG=1")
 elseif(CMAKE_BUILD_TYPE STREQUAL "MinSizeRel")
-    set(CMAKE_CXX_FLAGS_MINSIZEREL "-Os -DNDEBUG=1 -march=native")
+    set(CMAKE_CXX_FLAGS_MINSIZEREL "-Os -DNDEBUG=1")
 else()
     message(STATUS "Wrong build type selected, default to Debug.")
     set(CMAKE_BUILD_TYPE "Debug")
@@ -54,9 +54,3 @@ include_directories("include/")
 
 add_executable("${PROJECT_NAME}" "src/quickhull.cpp"  "include/quickhull.hpp")
 add_executable("qh"              "src/simple_use.cpp" "include/quickhull.hpp")
-
-#[[
-set(CMAKE_INSTALL_PREFIX "${PROJECT_SOURCE_DIR}")
-install(TARGETS "${PROJECT_NAME}" RUNTIME DESTINATION "bin/")
-install(TARGETS "qh" RUNTIME DESTINATION "bin/")
-]]
