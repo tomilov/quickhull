@@ -3,6 +3,7 @@ CMakeLists.txt.user
 CMakeCache.txt
 Makefile
 cmake_install.cmake
+compile_commands.json
 quickhull.cbp
 qh
 quickhull
