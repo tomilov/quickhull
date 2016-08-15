@@ -125,17 +125,17 @@ public :
             return std::inner_product(std::cbegin(normal_), std::cend(normal_), _point, D);
         }
 
-        value_type
-        cos_of_dihedral_angle(facet const & _facet) const
-        {
-            return std::inner_product(std::cbegin(normal_), std::cend(normal_), std::cbegin(_facet.normal_), value_type(0));
-        }
-
     };
 
     using facets = std::deque< facet >;
 
     facets facets_;
+
+    value_type
+    cos_of_dihedral_angle(facet const & _first, facet const & _second) const
+    {
+        return std::inner_product(std::cbegin(_first.normal_), std::cend(_first.normal_), std::cbegin(_second.normal_), zero);
+    }
 
 private :
 
@@ -213,9 +213,10 @@ private :
     void
     gshift(vrow _augend, value_type const & _addend) const // shift Gaussian row
     {
-        for (size_type i = 0; i <= dimension_; ++i) {
+        for (size_type i = 0; i < dimension_; ++i) {
             *_augend++ += _addend;
         }
+        *_augend += _addend;
     }
 
     void
@@ -429,7 +430,8 @@ private :
             std::fill_n(qi_, dimension_, zero);
             qi_[i] = one;
             size_type j = _rank;
-            while (0 < j--) {
+            while (0 < j) {
+                --j;
                 vrow const qrj_ = shadow_matrix_[j]; // containing packed QR
                 value_type s_ = zero;
                 for (size_type k = j; k < dimension_; ++k) {
@@ -444,7 +446,7 @@ private :
 
     bool
     steal_best(point_list & _basis)
-    { // from "outside_" set to "_basis" set moves a point which is furthest from affine subspace formed by points of "_basis" set
+    { // set moves a point which is furthest from affine subspace formed by points of "_basis" set from "outside_" set to "_basis"
         assert(!_basis.empty());
         size_type const rank_ = _basis.size() - 1;
         assert(rank_ < dimension_);
@@ -672,7 +674,7 @@ private :
         facet_.coplanar_.clear();
         for (size_type v = 0; v < dimension_; ++v) {
             size_type const neighbour = facet_.neighbours_[v];
-            if (!process_visibles(_newfacets, neighbour, _apex)) {
+            if (!process_visibles(_newfacets, neighbour, _apex)) { // recursive function
                 auto const newfacet = add_facet(facet_.vertices_, v, _apex, neighbour);
                 set_hyperplane_equation(newfacet.first);
                 _newfacets.push_back(newfacet.second);
@@ -721,7 +723,7 @@ private :
         assert(&facets_[f] == &facet_);
         for (size_type const n : facet_.neighbours_) {
             facet const & neighbour_ = facets_[n];
-            if (facet_.cos_of_dihedral_angle(neighbour_) < one) { // avoid roundoff error
+            if (cos_of_dihedral_angle(facet_, neighbour_) < one) { // avoid roundoff error
                 for (size_type v = 0; v < dimension_; ++v) {
                     if (neighbour_.neighbours_[v] == f) { // vertex v of neigbour_ facet is opposite to facet_
                         value_type const distance_ = facet_.distance(std::cbegin(*neighbour_.vertices_[v]));
@@ -898,7 +900,7 @@ public :
                 return false; // inner point is not on negative side of the first facet, therefore structure is not convex
             }
         }
-        vector memory_(3 * dimension_ + dimension_ * (dimension_ + 1), zero);
+        vector memory_(dimension_ * (4 + dimension_), zero);
         vrow centroid_ = memory_.data();
         vrow const ray_ = centroid_;
         centroid_ += dimension_;
@@ -917,7 +919,7 @@ public :
                 return false;
             }
         }
-        matrix g_(dimension_); // storage (d * (d + 1)) for Gaussian elimination with partial pivoting
+        matrix g_{dimension_}; // storage (d * (d + 1)) for Gaussian elimination with partial pivoting
         for (vrow & row_ : g_) {
             row_ = centroid_;
             centroid_ += (dimension_ + 1);
@@ -997,7 +999,8 @@ public :
             bool in_range_ = true;
             {
                 size_type i = dimension_;
-                while (0 < i--) {
+                while (0 < i) {
+                    --i;
                     vrow const gi_ = g_[i];
                     value_type & xi_ = gi_[dimension_];
                     for (size_type j = i + 1; j < dimension_; ++j) {
