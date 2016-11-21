@@ -118,7 +118,7 @@ public :
 
         template< typename iterator >
         value_type
-        distance(iterator const & _point) const
+        distance(iterator const _point) const
         {
             using iterator_traits = std::iterator_traits< iterator >;
             static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
@@ -143,7 +143,7 @@ private :
     make_facet(facet & _facet,
                point_array const & _vertices,
                size_type const _against,
-               point_iterator const & _apex,
+               point_iterator const _apex,
                size_type const _neighbour)
     {
         assert(_vertices.size() == dimension_);
@@ -185,7 +185,7 @@ private :
     reuse_facet(facet & _facet,
                 point_array const & _vertices,
                 size_type const _against,
-                point_iterator const & _apex,
+                point_iterator const _apex,
                 size_type const _neighbour)
     {
         assert(_vertices.size() == dimension_);
@@ -197,7 +197,7 @@ private :
     }
 
     void
-    copy_point(point_iterator const & _from, vrow _to) const
+    copy_point(point_iterator const _from, vrow _to) const
     {
         std::copy_n(std::cbegin(*_from), dimension_, _to);
     }
@@ -486,7 +486,7 @@ private :
     std::pair< facet &, size_type const >
     add_facet(point_array const & _vertices,
               size_type const _against,
-              point_iterator const & _apex,
+              point_iterator const _apex,
               size_type const _neighbour)
     {
         if (removed_facets_.empty()) {
@@ -589,8 +589,8 @@ private :
         bool
         operator == (ridge const & _rhs) const noexcept
         {
-            point_iterator const & lskip = facet_.vertices_[v];
-            point_iterator const & rskip = _rhs.facet_.vertices_[_rhs.v];
+            point_iterator const lskip = facet_.vertices_[v];
+            point_iterator const rskip = _rhs.facet_.vertices_[_rhs.v];
             for (point_iterator const & l : facet_.vertices_) {
                 if (l != lskip) {
                     bool found_ = false;
@@ -659,7 +659,7 @@ private :
     bool
     process_visibles(facet_array & _newfacets,
                      size_type const f,
-                     point_iterator const & _apex) // traverse the graph of visible facets
+                     point_iterator const _apex) // traverse the graph of visible facets
     {
         assert(!(visited_.size() < visible_.size()));
         if (!visited_.insert(f).second) {
@@ -744,7 +744,7 @@ public :
     template< typename iterator >
     value_type
     hypervolume(iterator first,
-                iterator const & last) // hypervolume of parallelotope spanned on vectors from last vertex (vlast) to all the vertices lies in [vfirst, vlast)
+                iterator const last) // hypervolume of parallelotope spanned on vectors from last vertex (vlast) to all the vertices lies in [vfirst, vlast)
     {
         using iterator_traits = std::iterator_traits< iterator >;
         static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
@@ -774,7 +774,7 @@ public :
 
     void
     add_points(point_iterator beg,
-               point_iterator const & end) // [beg; end)
+               point_iterator const end) // [beg; end)
     {
         while (beg != end) {
             outside_.push_back(beg);
@@ -784,8 +784,8 @@ public :
 
     template< typename iterator >
     void
-    add_points(iterator const & beg,
-               iterator const & end) // [beg; end)
+    add_points(iterator const beg,
+               iterator const end) // [beg; end)
     {
         using iterator_traits = std::iterator_traits< iterator >;
         static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
@@ -813,8 +813,8 @@ public :
 
     template< typename iterator >
     value_type
-    create_initial_simplex(iterator const & first,
-                           iterator const & last) // [bfirst; blast]
+    create_initial_simplex(iterator const first,
+                           iterator const last) // [bfirst; blast]
     {
         using iterator_traits = std::iterator_traits< iterator >;
         static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >::value);
