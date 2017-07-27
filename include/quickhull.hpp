@@ -121,7 +121,7 @@ public :
         distance(iterator const _point) const
         {
             using iterator_traits = std::iterator_traits< iterator >;
-            static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
+            static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value, "!");
             return std::inner_product(std::cbegin(normal_), std::cend(normal_), _point, D);
         }
 
@@ -162,8 +162,8 @@ private :
                bool const _swap)
     {
         using iterator_traits = std::iterator_traits< iterator >;
-        static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
-        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value);
+        static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value, "!");
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value, "!");
         _facet.vertices_.reserve(dimension_);
         _facet.neighbours_.reserve(dimension_);
         for (size_type v = 0; v <= dimension_; ++v) {
@@ -747,8 +747,8 @@ public :
                 iterator const last) // hypervolume of parallelotope spanned on vectors from last vertex (vlast) to all the vertices lies in [vfirst, vlast)
     {
         using iterator_traits = std::iterator_traits< iterator >;
-        static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
-        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value);
+        static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value, "!");
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value, "!");
         if (first == last) {
             return zero;
         }
@@ -788,8 +788,8 @@ public :
                iterator const end) // [beg; end)
     {
         using iterator_traits = std::iterator_traits< iterator >;
-        static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value);
-        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value);
+        static_assert(std::is_base_of< std::input_iterator_tag, typename iterator_traits::iterator_category >::value, "!");
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value, "!");
         std::copy(beg, end, std::back_inserter(outside_));
     }
 
@@ -817,8 +817,8 @@ public :
                            iterator const last) // [bfirst; blast]
     {
         using iterator_traits = std::iterator_traits< iterator >;
-        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >::value);
-        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value);
+        static_assert(std::is_base_of< std::forward_iterator_tag, typename iterator_traits::iterator_category >::value, "!");
+        static_assert(std::is_constructible< point_iterator, typename iterator_traits::value_type >::value, "!");
         assert(static_cast< size_type >(std::distance(first, last)) == dimension_);
         assert(facets_.empty());
         {
