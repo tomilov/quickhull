@@ -15,6 +15,7 @@
 #include <ostream>
 #include <fstream>
 #include <sstream>
+#include <chrono>
 
 #include <cmath>
 #include <cstdlib>
@@ -33,7 +34,7 @@
 #endif
 
 int
-main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
+main(int argc, char * argv[]) // rbox D3 t 100 | ./qh | gnuplot -p
 {
     std::ostream & err_ = std::cerr;
     std::ostream & log_ = std::clog;
@@ -71,17 +72,17 @@ main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
     {
         if (!std::getline(in_, line_)) {
             err_ << "error: input: missing dimension line" << std::endl;
-            return false;
+            return EXIT_FAILURE;
         }
         iss_.str(line_);
         if (!(iss_ >> dimension_)) {
             err_ << "error: input: dimension format" << std::endl;
-            return false;
+            return EXIT_FAILURE;
         }
         log_ << "dimensionality of input is " << dimension_ << std::endl;
         if (!(1 < dimension_)) {
             err_ << "error: input: dimensionality value is not greater then one" << std::endl;
-            return false;
+            return EXIT_FAILURE;
         }
         {
             using char_type = typename std::istream::char_type;
@@ -96,25 +97,25 @@ main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
     {
         if (!std::getline(in_, line_)) {
             err_ << "error: input: missing count line" << std::endl;
-            return false;
+            return EXIT_FAILURE;
         }
         iss_.str(line_);
         if (!(iss_ >> count_)) {
             err_ << "error: input: format of count" << std::endl;
-            return false;
+            return EXIT_FAILURE;
         }
         iss_.clear();
         log_ << "input points count = " << count_ << std::endl;
         if (!(dimension_ < count_)) {
             err_ << "error: input: points count is not greater then dimensionality" << std::endl;
-            return false;
+            return EXIT_FAILURE;
         }
     }
     points points_(count_);
     for (point & point_ : points_) {
         if (!std::getline(in_, line_)) {
             err_ << "error: input: wrong line count" << std::endl;
-            return false;
+            return EXIT_FAILURE;
         }
         point_.resize(dimension_);
         {
@@ -123,7 +124,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
             for (size_type j = 0; j < dimension_; ++j) {
                 if (!(iss_ >> *c)) {
                     err_ << "error: input: bad corodinate value at line " << j << " of data" << std::endl;
-                    return false;
+                    return EXIT_FAILURE;
                 }
                 ++c;
             }
@@ -156,7 +157,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
         if (basis_size_ != quick_hull_.dimension_ + 1) { // (5)
             err_ << "error: algorithm: cannot construct a simplex. Degenerated input set. Size of basis: "
                       << basis_size_ << std::endl;
-            return false;
+            return EXIT_FAILURE;
         }
     }
     { // create convex hull
@@ -173,7 +174,7 @@ main(int argc, char * argv[]) // rbox D3 t 100 | bin/qh | gnuplot -p
     if (!quick_hull_.check()) {
         err_ << TERM_COLOR_RED << "error: algorithm: resulting structure is not valid convex polytope"
                   << TERM_COLOR_DEFAULT << std::endl;
-        return false;
+        return EXIT_FAILURE;
     }
 
     // output

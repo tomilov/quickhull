@@ -432,7 +432,7 @@ struct test_quickhull
 };
 
 int
-main(int argc, char * argv[]) // rbox D3 t 100 | quickhull | gnuplot -p
+main(int argc, char * argv[]) // rbox D3 t 100 | ./quickhull | gnuplot -p
 {
     std::ostream & err_ = std::cerr;
     std::ostream & log_ = std::clog;
